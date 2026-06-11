@@ -26,6 +26,7 @@
 
 #include "EncinoWaves/FftwWrapper.h"
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstdlib>
@@ -177,15 +178,10 @@ int RunForType(const char *typeName)
 
     // The defaults must be untouched, the caller buffer holds the result.
     if (!MaxAbsDiff(out2, dc, static_cast<T>(1e-5))) return false;
-    for (T v : out)
-    {
-      if (v != T(99))
-      {
-        std::cout << "(default buffer was clobbered) ";
-        return false;
-      }
-    }
-    return true;
+    const bool untouched =
+        std::all_of(out.begin(), out.end(), [](T v) { return v == T(99); });
+    if (!untouched) std::cout << "(default buffer was clobbered) ";
+    return untouched;
   });
 
   // --- Test 5: padded-output plan honours the wider row stride -----------
@@ -242,9 +238,10 @@ int RunForType(const char *typeName)
     auto plan = FFT::plan_dft_c2r_2d(Slow, Fast, spec.data(), out.data(), 0u);
     FFT::execute_dft_c2r(plan, nullptr, out.data());  // in == nullptr → return
     FFT::destroy_plan(plan);
-    for (T v : out)
-      if (v != T(42)) { std::cout << "(buffer was modified) "; return false; }
-    return true;
+    const bool untouched =
+        std::all_of(out.begin(), out.end(), [](T v) { return v == T(42); });
+    if (!untouched) std::cout << "(buffer was modified) ";
+    return untouched;
   });
 
   // --- Test 7: non-padded guru plan behaves like the basic plan ----------

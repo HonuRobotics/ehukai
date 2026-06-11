@@ -17,8 +17,8 @@
  * inverse-FFT interface used by EncinoWaves.
  */
 
-#ifndef _EncinoWaves_FftwWrapper_h_
-#define _EncinoWaves_FftwWrapper_h_
+#ifndef ENCINOWAVES_FFTWWRAPPER_H
+#define ENCINOWAVES_FFTWWRAPPER_H
 
 #include <cassert>
 #include <cmath>
@@ -64,13 +64,6 @@ namespace detail
     T *defaultOut{nullptr};
   };
 
-  struct IodimDummy
-  {
-    int n{0};
-    int is{0};
-    int os{0};
-  };
-
   // 2D complex-to-real inverse FFT.
   // Input:  slow x (fast/2+1) complex, row-major, hermitian along fast.
   // Output: slow x fast real, row-major; row r at out[r * outputRowStride].
@@ -83,7 +76,8 @@ namespace detail
     using VecR = Eigen::Matrix<T, Eigen::Dynamic, 1>;
 
     const int halfFast = (fast / 2) + 1;
-    if (slow <= 0 || fast <= 0 || halfFast <= 0 || in == nullptr || out == nullptr)
+    if (slow <= 0 || fast <= 0 || halfFast <= 0 ||
+        in == nullptr || out == nullptr)
       return;
 
     // Unscaled = unnormalized inverse (no 1/N); HalfSpectrum = N/2+1
@@ -136,7 +130,6 @@ struct FftwWrapperT<float>
   using real_type = float;
   using complex_type = std::complex<float>;
   using plan_type = detail::Plan<float> *;
-  using iodim_type = detail::IodimDummy;
 
   static int init_threads()
   {
@@ -189,7 +182,7 @@ struct FftwWrapperT<float>
     std::free(i_data);
   }
 
-  static void execute(const plan_type i_plan)
+  static void execute(plan_type i_plan)
   {
     if (!i_plan) return;
     detail::Execute2dC2r<float>(i_plan->width, i_plan->height,
@@ -197,7 +190,7 @@ struct FftwWrapperT<float>
                                  i_plan->defaultIn, i_plan->defaultOut);
   }
 
-  static void execute_dft_c2r(const plan_type i_plan,
+  static void execute_dft_c2r(const detail::Plan<float> *i_plan,
                               complex_type *i_in, real_type *o_out)
   {
     if (!i_plan) return;
@@ -205,7 +198,7 @@ struct FftwWrapperT<float>
                                  i_plan->outputRowStride, i_in, o_out);
   }
 
-  static void destroy_plan(const plan_type i_plan)
+  static void destroy_plan(plan_type i_plan)
   {
     delete i_plan;
   }
@@ -223,7 +216,6 @@ struct FftwWrapperT<double>
   using real_type = double;
   using complex_type = std::complex<double>;
   using plan_type = detail::Plan<double> *;
-  using iodim_type = detail::IodimDummy;
 
   static int init_threads() { return 1; }
   static void plan_with_nthreads(int /*i_nthreads*/) {}
@@ -264,7 +256,7 @@ struct FftwWrapperT<double>
   static void *Malloc(std::size_t i_size) { return std::malloc(i_size); }
   static void Free(void *i_data) { std::free(i_data); }
 
-  static void execute(const plan_type i_plan)
+  static void execute(plan_type i_plan)
   {
     if (!i_plan) return;
     detail::Execute2dC2r<double>(i_plan->width, i_plan->height,
@@ -272,7 +264,7 @@ struct FftwWrapperT<double>
                                   i_plan->defaultIn, i_plan->defaultOut);
   }
 
-  static void execute_dft_c2r(const plan_type i_plan,
+  static void execute_dft_c2r(const detail::Plan<double> *i_plan,
                               complex_type *i_in, real_type *o_out)
   {
     if (!i_plan) return;
@@ -280,7 +272,7 @@ struct FftwWrapperT<double>
                                   i_plan->outputRowStride, i_in, o_out);
   }
 
-  static void destroy_plan(const plan_type i_plan) { delete i_plan; }
+  static void destroy_plan(plan_type i_plan) { delete i_plan; }
   static void cleanup_threads() {}
   static void cleanup() {}
 };
@@ -295,4 +287,4 @@ inline void FftwInitThreadsT() {}
 
 }  // namespace EncinoWaves
 
-#endif  // _EncinoWaves_FftwWrapper_h_
+#endif  // ENCINOWAVES_FFTWWRAPPER_H

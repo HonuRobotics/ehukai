@@ -79,7 +79,8 @@ namespace
   template <typename T>
   void PrintStats(const std::string &name, const Stats<T> &s)
   {
-    std::printf("  %-8s  min=%+9.4f  max=%+9.4f  mean=%+9.4f  rms=%9.4f  finite=%s\n",
+    std::printf("  %-8s  min=%+9.4f  max=%+9.4f  mean=%+9.4f  "
+                "rms=%9.4f  finite=%s\n",
                 name.c_str(),
                 static_cast<double>(s.min),
                 static_cast<double>(s.max),
@@ -89,9 +90,12 @@ namespace
   }
 }  // namespace
 
-int main()
+int main()  // NOLINT(bugprone-exception-escape): a throwing ctor is a test fail
 {
-  using namespace EncinoWaves;
+  using EncinoWaves::InitialStatef;
+  using EncinoWaves::Parameters;
+  using EncinoWaves::Propagationf;
+  using EncinoWaves::PropagatedStatef;
 
   std::cout << "EncinoWaves end-to-end smoke test\n"
                "(vendored library + Eigen-backed FFT shim)\n\n";
@@ -111,11 +115,11 @@ int main()
             << "\n\n";
 
   std::cout << "constructing InitialState (one-shot h0 / omega) ...\n";
-  InitialStatef istate(params);
+  const InitialStatef istate(params);
   std::cout << "  done, resolution=" << istate.resolution() << "\n\n";
 
   std::cout << "constructing Propagation (per-frame working buffers) ...\n";
-  Propagationf propagation(params, /*nthreads=*/-1);
+  Propagationf propagation(params, /*i_nthreads=*/-1);
   std::cout << "  done\n\n";
 
   std::cout << "constructing PropagatedState (output grids) ...\n";
@@ -160,7 +164,8 @@ int main()
   // Encino's MinE is the smaller eigenvalue of the chop Jacobian; it should
   // dip below 1 wherever the surface compresses, and below 0 in folds.
   // For wind=5 m/s + default pinch we expect a healthy spread either side.
-  demand(eStats.min < 1.0f,                      "MinE has cells below 1.0 (compression seen)");
+  demand(eStats.min < 1.0f,
+         "MinE has cells below 1.0 (compression seen)");
 
   std::cout << "\nresult: " << (ok ? "PASS" : "FAIL") << "\n";
   return ok ? 0 : 1;
