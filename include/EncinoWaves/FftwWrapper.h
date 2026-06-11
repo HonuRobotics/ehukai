@@ -24,6 +24,7 @@
 #include <cmath>
 #include <complex>
 #include <cstdlib>
+#include <type_traits>
 #include <vector>
 
 #include <Eigen/Core>
@@ -122,24 +123,24 @@ namespace detail
   }
 }  // namespace detail
 
+//-----------------------------------------------------------------------------
+// FftwWrapperT — FFTW-shaped facade over the Eigen::FFT inverse transform.
+// A single primary template serves both supported precisions: the bodies are
+// identical in T, so there is nothing to specialize. (Upstream needed two
+// explicit specializations only because FFTW exposed separate fftwf_* / fftw_*
+// C symbols.)
+//-----------------------------------------------------------------------------
 template <typename T>
-struct FftwWrapperT;
-
-//-----------------------------------------------------------------------------
-// SINGLE PRECISION
-//-----------------------------------------------------------------------------
-template <>
-struct FftwWrapperT<float>
+struct FftwWrapperT
 {
-  using real_type = float;
-  using complex_type = std::complex<float>;
-  using plan_type = detail::Plan<float> *;
+  static_assert(std::is_floating_point_v<T>,
+                "FftwWrapperT supports only float and double");
 
-  static int init_threads()
-  {
-    return 1;
-  }
+  using real_type = T;
+  using complex_type = std::complex<T>;
+  using plan_type = detail::Plan<T> *;
 
+  static int init_threads() { return 1; }
   static void plan_with_nthreads(int /*i_nthreads*/) {}
 
   // i_width is the slow (outer) dim; i_height is the fast (inner) dim.
@@ -147,7 +148,7 @@ struct FftwWrapperT<float>
                                    complex_type *i_in, real_type *o_out,
                                    unsigned int /*i_flags*/)
   {
-    auto *p = new detail::Plan<float>();
+    auto *p = new detail::Plan<T>();
     p->width = i_width;
     p->height = i_height;
     p->outputRowStride = i_height;
@@ -156,6 +157,9 @@ struct FftwWrapperT<float>
     return p;
   }
 
+  // Guru variant. EncinoWaves uses square grids, so this forwards to the plain
+  // 2D plan; for a non-square input the upstream FFTW guru path halved the last
+  // (width) dim, so the two would diverge.
   static plan_type plan_guru_dft_c2r(int i_width, int i_height,
                                      complex_type *i_in, real_type *o_out,
                                      unsigned int i_flags)
@@ -167,88 +171,7 @@ struct FftwWrapperT<float>
       int i_width, int i_height, int i_widthPad, int /*i_heightPad*/,
       complex_type *i_in, real_type *o_out, unsigned int /*i_flags*/)
   {
-    auto *p = new detail::Plan<float>();
-    p->width = i_width;
-    p->height = i_height;
-    p->outputRowStride = i_height + i_widthPad;
-    p->defaultIn = i_in;
-    p->defaultOut = o_out;
-    return p;
-  }
-
-  static void *Malloc(std::size_t i_size)
-  {
-    return std::malloc(i_size);
-  }
-
-  static void Free(void *i_data)
-  {
-    std::free(i_data);
-  }
-
-  static void execute(plan_type i_plan)
-  {
-    if (!i_plan) return;
-    detail::Execute2dC2r<float>(i_plan->width, i_plan->height,
-                                 i_plan->outputRowStride,
-                                 i_plan->defaultIn, i_plan->defaultOut);
-  }
-
-  static void execute_dft_c2r(const detail::Plan<float> *i_plan,
-                              complex_type *i_in, real_type *o_out)
-  {
-    if (!i_plan) return;
-    detail::Execute2dC2r<float>(i_plan->width, i_plan->height,
-                                 i_plan->outputRowStride, i_in, o_out);
-  }
-
-  static void destroy_plan(plan_type i_plan)
-  {
-    delete i_plan;
-  }
-
-  static void cleanup_threads() {}
-  static void cleanup() {}
-};
-
-//-----------------------------------------------------------------------------
-// DOUBLE PRECISION
-//-----------------------------------------------------------------------------
-template <>
-struct FftwWrapperT<double>
-{
-  using real_type = double;
-  using complex_type = std::complex<double>;
-  using plan_type = detail::Plan<double> *;
-
-  static int init_threads() { return 1; }
-  static void plan_with_nthreads(int /*i_nthreads*/) {}
-
-  static plan_type plan_dft_c2r_2d(int i_width, int i_height,
-                                   complex_type *i_in, real_type *o_out,
-                                   unsigned int /*i_flags*/)
-  {
-    auto *p = new detail::Plan<double>();
-    p->width = i_width;
-    p->height = i_height;
-    p->outputRowStride = i_height;
-    p->defaultIn = i_in;
-    p->defaultOut = o_out;
-    return p;
-  }
-
-  static plan_type plan_guru_dft_c2r(int i_width, int i_height,
-                                     complex_type *i_in, real_type *o_out,
-                                     unsigned int i_flags)
-  {
-    return plan_dft_c2r_2d(i_width, i_height, i_in, o_out, i_flags);
-  }
-
-  static plan_type plan_guru_dft_c2r_output_padded(
-      int i_width, int i_height, int i_widthPad, int /*i_heightPad*/,
-      complex_type *i_in, real_type *o_out, unsigned int /*i_flags*/)
-  {
-    auto *p = new detail::Plan<double>();
+    auto *p = new detail::Plan<T>();
     p->width = i_width;
     p->height = i_height;
     p->outputRowStride = i_height + i_widthPad;
@@ -263,17 +186,17 @@ struct FftwWrapperT<double>
   static void execute(plan_type i_plan)
   {
     if (!i_plan) return;
-    detail::Execute2dC2r<double>(i_plan->width, i_plan->height,
-                                  i_plan->outputRowStride,
-                                  i_plan->defaultIn, i_plan->defaultOut);
+    detail::Execute2dC2r<T>(i_plan->width, i_plan->height,
+                            i_plan->outputRowStride,
+                            i_plan->defaultIn, i_plan->defaultOut);
   }
 
-  static void execute_dft_c2r(const detail::Plan<double> *i_plan,
+  static void execute_dft_c2r(const detail::Plan<T> *i_plan,
                               complex_type *i_in, real_type *o_out)
   {
     if (!i_plan) return;
-    detail::Execute2dC2r<double>(i_plan->width, i_plan->height,
-                                  i_plan->outputRowStride, i_in, o_out);
+    detail::Execute2dC2r<T>(i_plan->width, i_plan->height,
+                            i_plan->outputRowStride, i_in, o_out);
   }
 
   static void destroy_plan(plan_type i_plan) { delete i_plan; }
