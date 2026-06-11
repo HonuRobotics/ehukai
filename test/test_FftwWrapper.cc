@@ -18,8 +18,9 @@
  *      a single-mode cosine in the spatial domain with amplitude consistent
  *      with FFTW's unnormalized convention.
  *   4-5. Caller-supplied buffers and padded-output row strides.
- *   6-8. Defensive guard, the non-padded guru plan, and the thin
- *      threading/alloc/null-plan surface — covering the full shim API.
+ *   6-9. Defensive guards (null input, odd inner dim), the non-padded guru
+ *      plan, and the thin threading / alloc / null-plan surface — covering
+ *      the full shim API.
  *
  * The float and double specializations are exercised independently.
  */
@@ -275,6 +276,25 @@ int RunForType(const char *typeName)
     FFT::cleanup_threads();
     FFT::cleanup();
     return true;
+  });
+
+  // --- Test 9: odd inner dimension is rejected (memory-safety guard) ------
+  // The KissFFT real inverse requires an even `fast`; an odd `fast` must
+  // early-return without touching the output (no heap overrun).
+  Check("odd inner dim → rejected, output untouched", failures, [&]() {
+    constexpr int OddFast = 7;
+    const int oddHalf = (OddFast / 2) + 1;
+    std::vector<Complex> oddSpec(
+        static_cast<std::size_t>(Slow) * oddHalf, Complex(1, 0));
+    std::vector<T> oddOut(static_cast<std::size_t>(Slow) * OddFast, T(13));
+    auto plan = FFT::plan_dft_c2r_2d(Slow, OddFast, oddSpec.data(),
+                                     oddOut.data(), 0u);
+    FFT::execute(plan);
+    FFT::destroy_plan(plan);
+    const bool untouched = std::all_of(oddOut.begin(), oddOut.end(),
+                                       [](T v) { return v == T(13); });
+    if (!untouched) std::cout << "(odd-dim output was written) ";
+    return untouched;
   });
 
   if (failures == 0)

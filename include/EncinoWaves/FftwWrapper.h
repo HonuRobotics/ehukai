@@ -67,6 +67,10 @@ namespace detail
   // 2D complex-to-real inverse FFT.
   // Input:  slow x (fast/2+1) complex, row-major, hermitian along fast.
   // Output: slow x fast real, row-major; row r at out[r * outputRowStride].
+  // `fast` (the inner/hermitian dim) must be even: the KissFFT-backed real
+  // inverse yields 2*(halfFast-1) reals, which equals `fast` only when `fast`
+  // is even. Odd `fast` is rejected by the guard below rather than overrunning
+  // the copy-out.
   template <typename T>
   inline void Execute2dC2r(int slow, int fast, int outputRowStride,
                            const std::complex<T> *in, T *out)
@@ -76,7 +80,7 @@ namespace detail
     using VecR = Eigen::Matrix<T, Eigen::Dynamic, 1>;
 
     const int halfFast = (fast / 2) + 1;
-    if (slow <= 0 || fast <= 0 || halfFast <= 0 ||
+    if (slow <= 0 || fast <= 0 || halfFast <= 0 || (fast % 2) != 0 ||
         in == nullptr || out == nullptr)
       return;
 
