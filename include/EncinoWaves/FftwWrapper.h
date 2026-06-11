@@ -24,7 +24,6 @@
 #include <cmath>
 #include <complex>
 #include <cstdlib>
-#include <memory>
 #include <vector>
 
 #include <Eigen/Core>
@@ -289,38 +288,10 @@ struct FftwWrapperT<double>
 //-----------------------------------------------------------------------------
 // GLOBAL THREAD INIT HELPER
 //-----------------------------------------------------------------------------
+// No global FFT thread state to initialize; retained as a no-op hook so the
+// per-call sites need no change.
 template <typename T>
-struct FftwInitThreadsT_InitHelper
-{
-  using FFT = FftwWrapperT<T>;
-
-  FftwInitThreadsT_InitHelper() { (void)FFT::init_threads(); }
-  ~FftwInitThreadsT_InitHelper() { FFT::cleanup_threads(); }
-};
-
-template <typename T> struct __BaseFftwInitThreadsT;
-
-template <>
-struct __BaseFftwInitThreadsT<float>
-{
-  using Init = FftwInitThreadsT_InitHelper<float>;
-  static std::unique_ptr<Init> sm_init;
-};
-
-template <>
-struct __BaseFftwInitThreadsT<double>
-{
-  using Init = FftwInitThreadsT_InitHelper<double>;
-  static std::unique_ptr<Init> sm_init;
-};
-
-template <typename T>
-inline void FftwInitThreadsT()
-{
-  using Base = __BaseFftwInitThreadsT<T>;
-  if (!Base::sm_init)
-    Base::sm_init.reset(new typename Base::Init);
-}
+inline void FftwInitThreadsT() {}
 
 }  // namespace EncinoWaves
 

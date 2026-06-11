@@ -24,7 +24,6 @@ find_package(TBB    REQUIRED)             # parallel sweeps in Propagation.h
 find_package(Imath  REQUIRED)             # BSD-3 math types (OpenEXR project)
 
 add_library(${PROJECT_NAME} SHARED
-  src/FftwWrapper.cpp
   src/Foundation.cpp
   src/Exception.cpp
   src/util/Exception.cpp)
