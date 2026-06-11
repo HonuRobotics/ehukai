@@ -8,7 +8,7 @@
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  *
- * Smoke tests for the Eigen-backed FftwWrapper shim. Three sanity checks:
+ * Smoke tests for the Eigen-backed FftwWrapper shim:
  *
  *   1. Zero spectrum → zero output (no spurious DC).
  *   2. Pure DC spectrum (only X[0,0] non-zero) → constant output equal to
@@ -17,6 +17,9 @@
  *   3. Pure single-mode spectrum (one sinusoid in the slow direction) →
  *      a single-mode cosine in the spatial domain with amplitude consistent
  *      with FFTW's unnormalized convention.
+ *   4-5. Caller-supplied buffers and padded-output row strides.
+ *   6-8. Defensive guard, the non-padded guru plan, and the thin
+ *      threading/alloc/null-plan surface — covering the full shim API.
  *
  * The float and double specializations are exercised independently.
  */
@@ -33,7 +36,7 @@ namespace
 {
   /// One-stop checker: prints a banner, runs `fn`, increments
   /// `failures` if `fn` returns false. Cheap test harness so we don't pull
-  /// in gtest for a five-test file.
+  /// in gtest for a small file.
   template <typename Fn>
   void Check(const char *name, int &failures, Fn fn)
   {
@@ -228,6 +231,52 @@ int RunForType(const char *typeName)
         }
       }
     }
+    return true;
+  });
+
+  // --- Test 6: defensive guard — invalid args are a no-op ----------------
+  // A null input pointer makes the IFFT bail at the early-return guard
+  // without touching the output buffer.
+  Check("invalid args → early return, output untouched", failures, [&]() {
+    std::fill(out.begin(), out.end(), T(42));
+    auto plan = FFT::plan_dft_c2r_2d(Slow, Fast, spec.data(), out.data(), 0u);
+    FFT::execute_dft_c2r(plan, nullptr, out.data());  // in == nullptr → return
+    FFT::destroy_plan(plan);
+    for (T v : out)
+      if (v != T(42)) { std::cout << "(buffer was modified) "; return false; }
+    return true;
+  });
+
+  // --- Test 7: non-padded guru plan behaves like the basic plan ----------
+  Check("plan_guru_dft_c2r → constant output (DC)", failures, [&]() {
+    std::fill(spec.begin(), spec.end(), Complex(0, 0));
+    const T dc = T(1.75);
+    At<T>(spec, Slow, Fast, 0, 0) = Complex(dc, 0);
+    std::fill(out.begin(), out.end(), T(0));
+    auto plan = FFT::plan_guru_dft_c2r(Slow, Fast, spec.data(), out.data(), 0u);
+    FFT::execute(plan);
+    FFT::destroy_plan(plan);
+    return MaxAbsDiff(out, dc, static_cast<T>(1e-5));
+  });
+
+  // --- Test 8: thin API surface (threads, alloc, null-plan no-ops) -------
+  // These are no-ops or trivial wrappers kept for FFTW call-site
+  // compatibility; exercise them so the whole shim is covered.
+  Check("threading / alloc / null-plan no-op surface", failures, [&]() {
+    EncinoWaves::FftwInitThreadsT<T>();  // no-op global hook
+    if (FFT::init_threads() != 1) return false;
+    FFT::plan_with_nthreads(4);
+
+    void *buf = FFT::Malloc(64);
+    if (buf == nullptr) return false;
+    FFT::Free(buf);
+
+    FFT::execute(nullptr);                                   // null-plan guard
+    FFT::execute_dft_c2r(nullptr, spec.data(), out.data());  // null-plan guard
+    FFT::destroy_plan(nullptr);                              // delete nullptr
+
+    FFT::cleanup_threads();
+    FFT::cleanup();
     return true;
   });
 

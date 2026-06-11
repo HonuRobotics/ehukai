@@ -95,8 +95,8 @@ namespace detail
     fftC2R.SetFlag(Eigen::FFT<T>::HalfSpectrum);
 
     // Pass 1: column pass (complex-to-complex of length slow).
-    std::vector<Complex> intermediate(
-        static_cast<std::size_t>(slow) * halfFast);
+    const std::size_t cells = static_cast<std::size_t>(slow) * halfFast;
+    std::vector<Complex> intermediate(cells);
 
     VecC colIn(slow);
     VecC colOut(slow);
