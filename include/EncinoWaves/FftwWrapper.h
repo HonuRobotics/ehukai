@@ -1,292 +1,301 @@
-//-*****************************************************************************
-// Copyright 2015 Christopher Jon Horvath
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//-*****************************************************************************
-
-//-*****************************************************************************
-// The basic architecture of these Waves is based on the TweakWaves application
-// written by Chris Horvath for Tweak Films in 2001.  This, in turn, was based
-// on the SIGGRAPH papers and courses by Jerry Tessendorf, and by the paper
-// "A Simple Fluid Solver based on the FTT" by Jos Stam.
-//
-// The TMA, JONSWAP, and Pierson Moskowitz Wave Spectra, as well as the
-// directional spreading functions are formulated based on the descriptions
-// given in "Ocean Waves: The Stochastic Approach",
-// by Michel K. Ochi, published by Cambridge Ocean Technology Series, 1998,2005.
-//
-// This library is written as a working implementation of the paper:
-// Christopher J. Horvath. 2015.
-// Empirical directional wave spectra for computer graphics.
-// In Proceedings of the 2015 Symposium on Digital Production (DigiPro '15),
-// Los Angeles, Aug. 8, 2015, pp. 29-39.
-//-*****************************************************************************
+/*
+ * Copyright (C) 2026 Honu Robotics
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Eigen::FFT-backed implementation of the FftwWrapperT 2D complex-to-real
+ * inverse-FFT interface used by EncinoWaves.
+ */
 
 #ifndef _EncinoWaves_FftwWrapper_h_
 #define _EncinoWaves_FftwWrapper_h_
 
-#include "Foundation.h"
+#include <cassert>
+#include <cmath>
+#include <complex>
+#include <cstdlib>
+#include <memory>
+#include <vector>
 
-namespace EncinoWaves {
+#include <Eigen/Core>
+#include <unsupported/Eigen/FFT>
 
-//-*****************************************************************************
-// Template basis - never used directly, specialized explicitly below.
+// Plan-flag values, kept so call sites compile; ignored here.
+#ifndef FFTW_ESTIMATE
+#define FFTW_ESTIMATE (1U << 6)
+#endif
+#ifndef FFTW_DESTROY_INPUT
+#define FFTW_DESTROY_INPUT (1U << 0)
+#endif
+#ifndef FFTW_MEASURE
+#define FFTW_MEASURE 0U
+#endif
+#ifndef FFTW_PATIENT
+#define FFTW_PATIENT (1U << 5)
+#endif
+#ifndef FFTW_EXHAUSTIVE
+#define FFTW_EXHAUSTIVE (1U << 3)
+#endif
+#ifndef FFTW_PRESERVE_INPUT
+#define FFTW_PRESERVE_INPUT (1U << 4)
+#endif
+
+namespace EncinoWaves
+{
+
+namespace detail
+{
+  template <typename T>
+  struct Plan
+  {
+    int width{0};
+    int height{0};
+    int outputRowStride{0};
+    std::complex<T> *defaultIn{nullptr};
+    T *defaultOut{nullptr};
+  };
+
+  struct IodimDummy
+  {
+    int n{0};
+    int is{0};
+    int os{0};
+  };
+
+  // 2D complex-to-real inverse FFT.
+  // Input:  slow x (fast/2+1) complex, row-major, hermitian along fast.
+  // Output: slow x fast real, row-major; row r at out[r * outputRowStride].
+  template <typename T>
+  inline void Execute2dC2r(int slow, int fast, int outputRowStride,
+                           const std::complex<T> *in, T *out)
+  {
+    using Complex = std::complex<T>;
+    using VecC = Eigen::Matrix<Complex, Eigen::Dynamic, 1>;
+    using VecR = Eigen::Matrix<T, Eigen::Dynamic, 1>;
+
+    const int halfFast = (fast / 2) + 1;
+    if (slow <= 0 || fast <= 0 || halfFast <= 0 || in == nullptr || out == nullptr)
+      return;
+
+    // Unscaled = unnormalized inverse (no 1/N); HalfSpectrum = N/2+1
+    // hermitian-packed input producing N real outputs.
+    Eigen::FFT<T> fftC2C;
+    fftC2C.SetFlag(Eigen::FFT<T>::Unscaled);
+    Eigen::FFT<T> fftC2R;
+    fftC2R.SetFlag(Eigen::FFT<T>::Unscaled);
+    fftC2R.SetFlag(Eigen::FFT<T>::HalfSpectrum);
+
+    // Pass 1: column pass (complex-to-complex of length slow).
+    std::vector<Complex> intermediate(
+        static_cast<std::size_t>(slow) * halfFast);
+
+    VecC colIn(slow);
+    VecC colOut(slow);
+    for (int j = 0; j < halfFast; ++j)
+    {
+      for (int i = 0; i < slow; ++i)
+        colIn(i) = in[static_cast<std::size_t>(i) * halfFast + j];
+      fftC2C.inv(colOut, colIn);
+      for (int i = 0; i < slow; ++i)
+        intermediate[static_cast<std::size_t>(i) * halfFast + j] = colOut(i);
+    }
+
+    // Pass 2: row pass (hermitian-to-real of length fast).
+    VecC rowIn(halfFast);
+    VecR rowOut(fast);
+    for (int i = 0; i < slow; ++i)
+    {
+      for (int j = 0; j < halfFast; ++j)
+        rowIn(j) = intermediate[static_cast<std::size_t>(i) * halfFast + j];
+      fftC2R.inv(rowOut, rowIn);
+      T *outRow = out + static_cast<std::size_t>(i) * outputRowStride;
+      for (int j = 0; j < fast; ++j)
+        outRow[j] = rowOut(j);
+    }
+  }
+}  // namespace detail
+
 template <typename T>
 struct FftwWrapperT;
 
-//-*****************************************************************************
+//-----------------------------------------------------------------------------
 // SINGLE PRECISION
-// This just wraps fftw function calls, nothing more.
+//-----------------------------------------------------------------------------
 template <>
 struct FftwWrapperT<float>
 {
-    typedef float               real_type;
-    typedef std::complex<float> complex_type;
-    typedef fftwf_plan          plan_type;
-    typedef fftwf_iodim         iodim_type;
+  using real_type = float;
+  using complex_type = std::complex<float>;
+  using plan_type = detail::Plan<float> *;
+  using iodim_type = detail::IodimDummy;
 
-    // Init threads. Only call once at the very begining.
-    static int init_threads( void )
-    { return fftwf_init_threads(); }
+  static int init_threads()
+  {
+    return 1;
+  }
 
-    // Configure next plan's number of threads.
-    static void plan_with_nthreads( int i_nthreads )
-    { fftwf_plan_with_nthreads( i_nthreads ); }
+  static void plan_with_nthreads(int /*i_nthreads*/) {}
 
-    // Create a complex-to-real, 2d plan.
-    static plan_type plan_dft_c2r_2d( int i_width, int i_height,
-                                      complex_type* i_in, real_type* o_out,
-                                      unsigned int i_flags )
-    { return fftwf_plan_dft_c2r_2d( i_width, i_height,
-                                    reinterpret_cast<fftwf_complex*>( i_in ),
-                                    o_out, i_flags ); }
+  // i_width is the slow (outer) dim; i_height is the fast (inner) dim.
+  static plan_type plan_dft_c2r_2d(int i_width, int i_height,
+                                   complex_type *i_in, real_type *o_out,
+                                   unsigned int /*i_flags*/)
+  {
+    auto *p = new detail::Plan<float>();
+    p->width = i_width;
+    p->height = i_height;
+    p->outputRowStride = i_height;
+    p->defaultIn = i_in;
+    p->defaultOut = o_out;
+    return p;
+  }
 
-    // Use the guru interface to create the same plan.
-    static plan_type plan_guru_dft_c2r( int i_width, int i_height,
-                                        complex_type* i_in, real_type* o_out,
-                                        unsigned int i_flags )
-    {
-        int rank = 2;
-        iodim_type dims[2];
-        dims[0].n = i_height;
-        dims[0].is = (i_width/2)+1;
-        dims[0].os = i_width;
+  static plan_type plan_guru_dft_c2r(int i_width, int i_height,
+                                     complex_type *i_in, real_type *o_out,
+                                     unsigned int i_flags)
+  {
+    return plan_dft_c2r_2d(i_width, i_height, i_in, o_out, i_flags);
+  }
 
-        dims[1].n = i_width;
-        dims[1].is = 1;
-        dims[1].os = 1;
+  static plan_type plan_guru_dft_c2r_output_padded(
+      int i_width, int i_height, int i_widthPad, int /*i_heightPad*/,
+      complex_type *i_in, real_type *o_out, unsigned int /*i_flags*/)
+  {
+    auto *p = new detail::Plan<float>();
+    p->width = i_width;
+    p->height = i_height;
+    p->outputRowStride = i_height + i_widthPad;
+    p->defaultIn = i_in;
+    p->defaultOut = o_out;
+    return p;
+  }
 
-        int howmany = 1;
-        iodim_type howmanydims[1];
-        howmanydims[0].n = 1;
-        howmanydims[0].is = ((i_width/2)+1)*i_height;
-        howmanydims[0].os = i_width*i_height;
+  static void *Malloc(std::size_t i_size)
+  {
+    return std::malloc(i_size);
+  }
 
-        return fftwf_plan_guru_dft_c2r(
-            rank, dims, howmany, howmanydims,
-            reinterpret_cast<fftwf_complex*>( i_in ), o_out, i_flags );
-    }
+  static void Free(void *i_data)
+  {
+    std::free(i_data);
+  }
 
-    // Use the guru interface to provide a padded output
-    static plan_type plan_guru_dft_c2r_output_padded(
-        int i_width, int i_height, int i_widthPad, int i_heightPad,
-        complex_type* i_in, real_type* o_out, unsigned int i_flags )
-    {
-        int rank = 2;
-        iodim_type dims[2];
-        dims[0].n = i_height;
-        dims[0].is = (i_width/2)+1;
-        dims[0].os = i_width+i_widthPad;
+  static void execute(const plan_type i_plan)
+  {
+    if (!i_plan) return;
+    detail::Execute2dC2r<float>(i_plan->width, i_plan->height,
+                                 i_plan->outputRowStride,
+                                 i_plan->defaultIn, i_plan->defaultOut);
+  }
 
-        dims[1].n = i_width;
-        dims[1].is = 1;
-        dims[1].os = 1;
+  static void execute_dft_c2r(const plan_type i_plan,
+                              complex_type *i_in, real_type *o_out)
+  {
+    if (!i_plan) return;
+    detail::Execute2dC2r<float>(i_plan->width, i_plan->height,
+                                 i_plan->outputRowStride, i_in, o_out);
+  }
 
-        int howmany = 1;
-        iodim_type howmanydims[1];
-        howmanydims[0].n = 1;
-        howmanydims[0].is = ((i_width/2)+1)*i_height;
-        howmanydims[0].os = (i_width+i_widthPad)*(i_height+i_heightPad);
+  static void destroy_plan(const plan_type i_plan)
+  {
+    delete i_plan;
+  }
 
-        return fftwf_plan_guru_dft_c2r(
-            rank, dims, howmany, howmanydims,
-            reinterpret_cast<fftwf_complex*>( i_in ), o_out, i_flags );
-    }
-
-    // Malloc some data. Capitalized to make very sure it isn't
-    // confused with system malloc.
-    static void* Malloc( size_t i_size )
-    { return fftwf_malloc( i_size ); }
-
-    // Free some data. Capitalized to make very sure it isn't confused
-    // with system free.
-    static void Free( void* i_data )
-    { fftwf_free( i_data ); }
-
-    // Execute a plan.
-    static void execute( const plan_type i_plan )
-    { fftwf_execute( i_plan ); }
-
-    // Execute a plan on other data.
-    static void execute_dft_c2r( const plan_type i_plan,
-                                 complex_type* i_in, real_type* o_out )
-    { fftwf_execute_dft_c2r( i_plan,
-                             reinterpret_cast<fftwf_complex*>( i_in ),
-                             o_out ); }
-
-    // Destroy a plan.
-    static void destroy_plan( const plan_type i_plan )
-    { fftwf_destroy_plan( i_plan ); }
-
-    // Cleanup threads. Only call at the very end.
-    static void cleanup_threads( void )
-    { fftwf_cleanup_threads(); }
-
-    // Cleanup.
-    static void cleanup( void )
-    { fftwf_cleanup(); }
+  static void cleanup_threads() {}
+  static void cleanup() {}
 };
 
-//-*****************************************************************************
+//-----------------------------------------------------------------------------
 // DOUBLE PRECISION
-// This just wraps fftw function calls, nothing more.
+//-----------------------------------------------------------------------------
 template <>
 struct FftwWrapperT<double>
 {
-    typedef double                  real_type;
-    typedef std::complex<double>    complex_type;
-    typedef fftw_plan               plan_type;
-    typedef fftw_iodim              iodim_type;
+  using real_type = double;
+  using complex_type = std::complex<double>;
+  using plan_type = detail::Plan<double> *;
+  using iodim_type = detail::IodimDummy;
 
-    // Init threads. Only call once at the very begining.
-    static int init_threads( void )
-    { return fftw_init_threads(); }
+  static int init_threads() { return 1; }
+  static void plan_with_nthreads(int /*i_nthreads*/) {}
 
-    // Configure next plan's number of threads.
-    static void plan_with_nthreads( int i_nthreads )
-    { fftw_plan_with_nthreads( i_nthreads ); }
+  static plan_type plan_dft_c2r_2d(int i_width, int i_height,
+                                   complex_type *i_in, real_type *o_out,
+                                   unsigned int /*i_flags*/)
+  {
+    auto *p = new detail::Plan<double>();
+    p->width = i_width;
+    p->height = i_height;
+    p->outputRowStride = i_height;
+    p->defaultIn = i_in;
+    p->defaultOut = o_out;
+    return p;
+  }
 
-    // Create a complex-to-real, 2d plan.
-    static plan_type plan_dft_c2r_2d( int i_width, int i_height,
-                                      complex_type* i_in, real_type* o_out,
-                                      unsigned int i_flags )
-    { return fftw_plan_dft_c2r_2d( i_width, i_height,
-                                   reinterpret_cast<fftw_complex*>( i_in ),
-                                   o_out, i_flags ); }
+  static plan_type plan_guru_dft_c2r(int i_width, int i_height,
+                                     complex_type *i_in, real_type *o_out,
+                                     unsigned int i_flags)
+  {
+    return plan_dft_c2r_2d(i_width, i_height, i_in, o_out, i_flags);
+  }
 
-    // Use the guru interface to create the same plan.
-    static plan_type plan_guru_dft_c2r( int i_width, int i_height,
-                                        complex_type* i_in, real_type* o_out,
-                                        unsigned int i_flags )
-    {
-        int rank = 2;
-        iodim_type dims[2];
-        dims[0].n = i_height;
-        dims[0].is = (i_width/2)+1;
-        dims[0].os = i_width;
+  static plan_type plan_guru_dft_c2r_output_padded(
+      int i_width, int i_height, int i_widthPad, int /*i_heightPad*/,
+      complex_type *i_in, real_type *o_out, unsigned int /*i_flags*/)
+  {
+    auto *p = new detail::Plan<double>();
+    p->width = i_width;
+    p->height = i_height;
+    p->outputRowStride = i_height + i_widthPad;
+    p->defaultIn = i_in;
+    p->defaultOut = o_out;
+    return p;
+  }
 
-        dims[1].n = i_width;
-        dims[1].is = 1;
-        dims[1].os = 1;
+  static void *Malloc(std::size_t i_size) { return std::malloc(i_size); }
+  static void Free(void *i_data) { std::free(i_data); }
 
-        int howmany = 1;
-        iodim_type howmanydims[1];
-        howmanydims[0].n = 1;
-        howmanydims[0].is = ((i_width/2)+1)*i_height;
-        howmanydims[0].os = i_width*i_height;
+  static void execute(const plan_type i_plan)
+  {
+    if (!i_plan) return;
+    detail::Execute2dC2r<double>(i_plan->width, i_plan->height,
+                                  i_plan->outputRowStride,
+                                  i_plan->defaultIn, i_plan->defaultOut);
+  }
 
-        return fftw_plan_guru_dft_c2r(
-            rank, dims, howmany, howmanydims,
-            reinterpret_cast<fftw_complex*>( i_in ), o_out, i_flags );
-    }
+  static void execute_dft_c2r(const plan_type i_plan,
+                              complex_type *i_in, real_type *o_out)
+  {
+    if (!i_plan) return;
+    detail::Execute2dC2r<double>(i_plan->width, i_plan->height,
+                                  i_plan->outputRowStride, i_in, o_out);
+  }
 
-    // Use the guru interface to provide a padded output
-    static plan_type plan_guru_dft_c2r_output_padded(
-        int i_width, int i_height, int i_widthPad, int i_heightPad,
-        complex_type* i_in, real_type* o_out, unsigned int i_flags )
-    {
-        int rank = 2;
-        iodim_type dims[2];
-        dims[0].n = i_height;
-        dims[0].is = (i_width/2)+1;
-        dims[0].os = i_width+i_widthPad;
-
-        dims[1].n = i_width;
-        dims[1].is = 1;
-        dims[1].os = 1;
-
-        int howmany = 1;
-        iodim_type howmanydims[1];
-        howmanydims[0].n = 1;
-        howmanydims[0].is = ((i_width/2)+1)*i_height;
-        howmanydims[0].os = (i_width+i_widthPad)*(i_height+i_heightPad);
-
-        return fftw_plan_guru_dft_c2r(
-            rank, dims, howmany, howmanydims,
-            reinterpret_cast<fftw_complex*>( i_in ), o_out, i_flags );
-    }
-
-    // Malloc some data. Capitalized to make very sure it isn't
-    // confused with system malloc.
-    static void* Malloc( size_t i_size )
-    { return fftw_malloc( i_size ); }
-
-    // Free some data. Capitalized to make very sure it isn't confused
-    // with system free.
-    static void Free( void* i_data )
-    { fftw_free( i_data ); }
-
-    // Execute a plan.
-    static void execute( const plan_type i_plan )
-    { fftw_execute( i_plan ); }
-
-    // Execute a plan on other data.
-    static void execute_dft_c2r( const plan_type i_plan,
-                                 complex_type* i_in, real_type* o_out )
-    { fftw_execute_dft_c2r( i_plan,
-                            reinterpret_cast<fftw_complex*>( i_in ),
-                            o_out ); }
-
-    // Destroy a plan.
-    static void destroy_plan( const plan_type i_plan )
-    { fftw_destroy_plan( i_plan ); }
-
-    // Cleanup threads. Only call at the very end.
-    static void cleanup_threads()
-    { fftw_cleanup_threads(); }
-
-    // Cleanup.
-    static void cleanup( void )
-    { fftw_cleanup(); }
+  static void destroy_plan(const plan_type i_plan) { delete i_plan; }
+  static void cleanup_threads() {}
+  static void cleanup() {}
 };
 
-//-*****************************************************************************
-//-*****************************************************************************
-// GLOBAL THREAD INIT NONSENSE.
-//-*****************************************************************************
-//-*****************************************************************************
-
+//-----------------------------------------------------------------------------
+// GLOBAL THREAD INIT HELPER
+//-----------------------------------------------------------------------------
 template <typename T>
 struct FftwInitThreadsT_InitHelper
 {
-    typedef FftwWrapperT<T> FFT;
+  using FFT = FftwWrapperT<T>;
 
-    FftwInitThreadsT_InitHelper()
-    {
-        int err = FFT::init_threads();
-        EWAV_ASSERT( err != 0, "FFTW thread init error." );
-    }
-    ~FftwInitThreadsT_InitHelper() { FFT::cleanup_threads(); }
+  FftwInitThreadsT_InitHelper() { (void)FFT::init_threads(); }
+  ~FftwInitThreadsT_InitHelper() { FFT::cleanup_threads(); }
 };
 
 template <typename T> struct __BaseFftwInitThreadsT;
@@ -294,28 +303,25 @@ template <typename T> struct __BaseFftwInitThreadsT;
 template <>
 struct __BaseFftwInitThreadsT<float>
 {
-    typedef FftwInitThreadsT_InitHelper<float> Init;
-    static std::unique_ptr<Init> sm_init;
+  using Init = FftwInitThreadsT_InitHelper<float>;
+  static std::unique_ptr<Init> sm_init;
 };
 
 template <>
 struct __BaseFftwInitThreadsT<double>
 {
-    typedef FftwInitThreadsT_InitHelper<double> Init;
-    static std::unique_ptr<Init> sm_init;
+  using Init = FftwInitThreadsT_InitHelper<double>;
+  static std::unique_ptr<Init> sm_init;
 };
 
-//-*****************************************************************************
 template <typename T>
 inline void FftwInitThreadsT()
 {
-    typedef __BaseFftwInitThreadsT<T> Base;
-    typedef typename Base::Init Init;
+  using Base = __BaseFftwInitThreadsT<T>;
+  if (!Base::sm_init)
+    Base::sm_init.reset(new typename Base::Init);
+}
 
-    if ( !Base::sm_init )
-    { Base::sm_init.reset( new typename Base::Init ); }
-};
+}  // namespace EncinoWaves
 
-} // namespace EncinoWaves
-
-#endif
+#endif  // _EncinoWaves_FftwWrapper_h_
