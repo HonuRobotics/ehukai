@@ -42,7 +42,6 @@
 #include <ImathMath.h>
 #include <ImathFun.h>
 
-#include <fftw3.h>
 
 #include <iostream>
 #include <vector>

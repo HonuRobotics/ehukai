@@ -32,7 +32,7 @@
 // Los Angeles, Aug. 8, 2015, pp. 29-39.
 //-*****************************************************************************
 
-#include "Foundation.h"
+#include "EncinoWaves/Foundation.h"
 
 namespace EncinoWaves {
 

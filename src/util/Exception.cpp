@@ -14,7 +14,7 @@
 // limitations under the License.
 //-*****************************************************************************
 
-#include "Exception.h"
+#include "Util/Exception.h"
 
 namespace EncinoWaves {
 namespace Util {
