@@ -67,6 +67,16 @@ Run the headless smoke tests:
 ctest --test-dir build --output-on-failure
 ```
 
+Optionally build and run the FFT microbenchmark (serial vs. parallel inverse FFT
+at several grid sizes). It needs **Google Benchmark** and is off by default:
+
+```sh
+sudo apt-get install -y libbenchmark-dev
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENCINOWAVES_BUILD_BENCHMARKS=ON
+cmake --build build -j
+./build/bench_FftwWrapper
+```
+
 Install (optional — headers, shared library, and the `EncinoWaves` CMake config):
 
 ```sh
