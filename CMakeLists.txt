@@ -82,3 +82,13 @@ if(BUILD_TESTING)
     add_test(NAME ${t} COMMAND ${t})
   endforeach()
 endif()
+
+# ---- optional FFT microbenchmark (off by default; needs Google Benchmark) ----
+option(ENCINOWAVES_BUILD_BENCHMARKS
+       "Build the FFT microbenchmark (requires Google Benchmark)" OFF)
+if(ENCINOWAVES_BUILD_BENCHMARKS)
+  find_package(benchmark REQUIRED)
+  add_executable(bench_FftwWrapper benchmark/bench_FftwWrapper.cc)
+  target_link_libraries(bench_FftwWrapper
+    PRIVATE ${PROJECT_NAME} benchmark::benchmark)
+endif()
