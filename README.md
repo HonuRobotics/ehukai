@@ -117,6 +117,15 @@ cpplint include/EncinoWaves/FftwWrapper.h test/test_FftwWrapper.cc \
 
 All three are clean on the fork's sources.
 
+cpplint and cppcheck also run as a [pre-commit](https://pre-commit.com) hook on
+changed files (clang-tidy is excluded — it is too slow for a hook; run it in CI):
+
+```sh
+pipx install pre-commit   # or: python3 -m pip install --user pre-commit
+pre-commit install        # enable the git hook
+pre-commit run --all-files  # run against the whole tree once
+```
+
 
 ### License
 
