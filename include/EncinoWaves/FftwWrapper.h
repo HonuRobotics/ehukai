@@ -24,6 +24,7 @@
 #include <cmath>
 #include <complex>
 #include <cstdlib>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
@@ -31,6 +32,7 @@
 #include <unsupported/Eigen/FFT>
 
 #include <tbb/blocked_range.h>
+#include <tbb/global_control.h>
 #include <tbb/parallel_for.h>
 
 // Plan-flag values, kept so call sites compile; ignored here.
@@ -71,6 +73,14 @@ namespace detail
     // plan per worker thread, or serialize calls on a shared plan.
     std::vector<std::complex<T>> intermediate;
   };
+
+  // Process-wide TBB concurrency cap set by plan_with_nthreads (the FFTW
+  // plan_with_nthreads analog). Null means the TBB default (all cores).
+  inline std::unique_ptr<tbb::global_control> &ThreadControl()
+  {
+    static std::unique_ptr<tbb::global_control> ctrl;
+    return ctrl;
+  }
 
   // Per-task TBB grain size: columns/rows handled by one task, which reuses a
   // single thread-local Eigen::FFT across them. Small grids collapse to one
@@ -173,7 +183,20 @@ struct FftwWrapperT
   using plan_type = detail::Plan<T> *;
 
   static int init_threads() { return 1; }
-  static void plan_with_nthreads(int /*i_nthreads*/) {}
+
+  // Bound TBB's worker concurrency for subsequent execute() calls, mirroring
+  // FFTW's plan_with_nthreads. n <= 0 restores the TBB default (all cores).
+  static void plan_with_nthreads(int i_nthreads)
+  {
+    if (i_nthreads <= 0)
+    {
+      detail::ThreadControl().reset();  // restore the TBB default
+      return;
+    }
+    const auto field = tbb::global_control::max_allowed_parallelism;
+    const auto n = static_cast<std::size_t>(i_nthreads);
+    detail::ThreadControl() = std::make_unique<tbb::global_control>(field, n);
+  }
 
   // i_width is the slow (outer) dim; i_height is the fast (inner) dim.
   static plan_type plan_dft_c2r_2d(int i_width, int i_height,
