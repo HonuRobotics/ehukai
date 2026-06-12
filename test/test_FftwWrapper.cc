@@ -26,6 +26,8 @@
  *   13. A random spectrum checked against an independent brute-force inverse
  *      DFT — mirrors real multi-mode, randomized-phase use.
  *   14. A non-square (8x4) grid.
+ *   15. A 64x64 grid that splits across TBB tasks — parallel result matches
+ *      the serial DC→constant expectation.
  *
  * The float and double specializations are exercised independently.
  */
@@ -481,6 +483,23 @@ int RunForType(const char *typeName)
     FFT::execute(plan);
     FFT::destroy_plan(plan);
     return MaxAbsDiff(nsOut, dc, static_cast<T>(1e-5));
+  });
+
+  // --- Test 15: larger grid exercises the parallel multi-grain path -------
+  // 64x64 forces tbb::blocked_range to split across tasks; a DC spectrum must
+  // still yield a constant field (parallel result == serial expectation).
+  Check("64x64 DC spectrum → constant (parallel grains)", failures, [&]() {
+    constexpr int N = 64;
+    const int nHalf = (N / 2) + 1;
+    std::vector<Complex> bigSpec(static_cast<std::size_t>(N) * nHalf,
+                                 Complex(0, 0));
+    std::vector<T> bigOut(static_cast<std::size_t>(N) * N, T(0));
+    const T dc = T(2.5);
+    bigSpec[0] = Complex(dc, 0);  // X[0,0]
+    auto plan = FFT::plan_dft_c2r_2d(N, N, bigSpec.data(), bigOut.data(), 0u);
+    FFT::execute(plan);
+    FFT::destroy_plan(plan);
+    return MaxAbsDiff(bigOut, dc, static_cast<T>(1e-4));
   });
 
   if (failures == 0)
