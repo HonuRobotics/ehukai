@@ -1,0 +1,14 @@
+# clang-tidy policy for the code this fork authors (the FFT shim + its tests).
+#
+# Excluded by design, not because they are clean:
+#   bugprone-easily-swappable-parameters — the FftwWrapperT API mirrors FFTW's
+#     (int width, int height, ...) on purpose; strong-typing it would defeat the
+#     drop-in compatibility.
+#   modernize-use-trailing-return-type / use-nodiscard, misc-include-cleaner —
+#     stylistic noise not worth enforcing here.
+#
+# HeaderFilterRegex limits reported diagnostics to the one header we rewrote;
+# the upstream Horvath headers are out of scope for this gate.
+Checks: '-*,bugprone-*,performance-*,portability-*,misc-*,clang-analyzer-*,cert-*,modernize-*,-modernize-use-trailing-return-type,-modernize-use-nodiscard,-misc-include-cleaner,-bugprone-easily-swappable-parameters'
+HeaderFilterRegex: 'EncinoWaves/FftwWrapper\.h$'
+WarningsAsErrors: ''
