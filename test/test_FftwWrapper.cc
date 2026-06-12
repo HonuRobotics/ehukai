@@ -264,7 +264,8 @@ int RunForType(const char *typeName)
   Check("threading / alloc / null-plan no-op surface", failures, [&]() {
     EncinoWaves::FftwInitThreadsT<T>();  // no-op global hook
     if (FFT::init_threads() != 1) return false;
-    FFT::plan_with_nthreads(4);
+    FFT::plan_with_nthreads(2);  // bound TBB concurrency...
+    FFT::plan_with_nthreads(0);  // ...then restore the default
 
     void *buf = FFT::Malloc(64);
     if (buf == nullptr) return false;
