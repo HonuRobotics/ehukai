@@ -1,6 +1,6 @@
-# Fast pre-commit checks. They use the system tools from the README install step
-# (cppcheck, cpplint) and the committed .clang-tidy / CPPLINT.cfg policies, scoped
-# to the files this fork authors — the FFT shim and its tests.
+# Fast pre-commit checks: cpplint (installed by pre-commit) and the system
+# cppcheck from the README install step, with the committed CPPLINT.cfg policy,
+# scoped to the files this fork authors — the FFT shim and its tests.
 #
 # clang-tidy is intentionally NOT a pre-commit hook: it takes ~1 min (it parses
 # every test TU with all of Eigen / TBB / Imath) and needs a compile database.
@@ -11,8 +11,10 @@ repos:
       - id: cpplint
         name: cpplint
         entry: cpplint
-        language: system
-        # cpplint reads CPPLINT.cfg from the tree.
+        # pre-commit installs cpplint in an isolated env, so no system cpplint is
+        # needed on PATH. cpplint reads CPPLINT.cfg from the tree.
+        language: python
+        additional_dependencies: ['cpplint==2.0.2']
         files: '^(include/EncinoWaves/FftwWrapper\.h|test/.*\.cc)$'
 
       - id: cppcheck

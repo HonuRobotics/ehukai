@@ -122,8 +122,9 @@ All three are clean on the fork's sources.
 cpplint and cppcheck also run automatically via
 [pre-commit](https://pre-commit.com) on the files this fork authors. clang-tidy
 is intentionally excluded — it is too slow for a hook and needs a compile
-database, so run it in CI instead. The hooks call the system `cppcheck` /
-`cpplint` from the install step above, so install those first.
+database, so run it in CI instead. The cppcheck hook uses the system `cppcheck`
+from the install step above; cpplint is installed automatically by pre-commit
+into an isolated environment, so no system cpplint is needed for the hook.
 
 One-time setup, from the repo root:
 
