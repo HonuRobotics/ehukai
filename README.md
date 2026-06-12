@@ -117,13 +117,33 @@ cpplint include/EncinoWaves/FftwWrapper.h test/test_FftwWrapper.cc \
 
 All three are clean on the fork's sources.
 
-cpplint and cppcheck also run as a [pre-commit](https://pre-commit.com) hook on
-changed files (clang-tidy is excluded — it is too slow for a hook; run it in CI):
+### Pre-commit hook
+
+cpplint and cppcheck also run automatically via
+[pre-commit](https://pre-commit.com) on the files this fork authors. clang-tidy
+is intentionally excluded — it is too slow for a hook and needs a compile
+database, so run it in CI instead. The hooks call the system `cppcheck` /
+`cpplint` from the install step above, so install those first.
+
+One-time setup, from the repo root:
 
 ```sh
-pipx install pre-commit   # or: python3 -m pip install --user pre-commit
-pre-commit install        # enable the git hook
-pre-commit run --all-files  # run against the whole tree once
+pipx install pre-commit          # or: python3 -m pip install --user pre-commit
+pre-commit install               # install the git hook into .git/hooks
+```
+
+After that, every `git commit` runs cpplint and cppcheck on the staged shim and
+test files and blocks the commit if either reports a problem. To check the whole
+tree at once — for example right after enabling the hook:
+
+```sh
+pre-commit run --all-files
+```
+
+To commit without running the hooks (use sparingly), pass `--no-verify`:
+
+```sh
+git commit --no-verify
 ```
 
 
