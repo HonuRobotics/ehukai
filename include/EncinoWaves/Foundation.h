@@ -56,12 +56,12 @@
 #include <random>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_reduce.h>
 #include <tbb/blocked_range.h>
 #include <tbb/blocked_range2d.h>
-#include <tbb/mutex.h>
 
 #include <boost/format.hpp>
 
@@ -77,12 +77,12 @@ namespace EncinoWaves {
 using namespace Util;
 
 //-*****************************************************************************
-extern tbb::mutex g_printMutex;
+extern std::mutex g_printMutex;
 
-#define EWAV_MUTEX_PRINT(TEXT)                  \
-  do {                                          \
-    tbb::mutex::scoped_lock lock(g_printMutex); \
-    std::cout << TEXT;                          \
+#define EWAV_MUTEX_PRINT(TEXT)                     \
+  do {                                             \
+    std::lock_guard<std::mutex> lock(g_printMutex); \
+    std::cout << TEXT;                             \
   } while (0)
 
 //-*****************************************************************************

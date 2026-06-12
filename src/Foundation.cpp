@@ -37,6 +37,6 @@
 namespace EncinoWaves {
 
 //-*****************************************************************************
-tbb::mutex g_printMutex;
+std::mutex g_printMutex;
 
 } // namespace EncinoWaves
