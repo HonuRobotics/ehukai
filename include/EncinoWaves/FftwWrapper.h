@@ -68,6 +68,10 @@ namespace detail
     int outputRowStride{0};
     std::complex<T> *defaultIn{nullptr};
     T *defaultOut{nullptr};
+    // Cached column-pass scratch, reused across execute() calls so the IFFT
+    // does not reallocate per frame. This makes a plan non-re-entrant: use one
+    // plan per worker thread, or serialize calls on a shared plan.
+    std::vector<std::complex<T>> intermediate;
   };
 
   // Process-wide TBB concurrency cap set by plan_with_nthreads (the FFTW
@@ -95,7 +99,8 @@ namespace detail
   // thread-safety contract that SpectralSpatialField relies on.
   template <typename T>
   inline void Execute2dC2r(int slow, int fast, int outputRowStride,
-                           const std::complex<T> *in, T *out)
+                           const std::complex<T> *in, T *out,
+                           std::vector<std::complex<T>> &scratch)
   {
     using Complex = std::complex<T>;
     using VecC = Eigen::Matrix<Complex, Eigen::Dynamic, 1>;
@@ -242,15 +247,17 @@ struct FftwWrapperT
     if (!i_plan) return;
     detail::Execute2dC2r<T>(i_plan->width, i_plan->height,
                             i_plan->outputRowStride,
-                            i_plan->defaultIn, i_plan->defaultOut);
+                            i_plan->defaultIn, i_plan->defaultOut,
+                            i_plan->intermediate);
   }
 
-  static void execute_dft_c2r(const detail::Plan<T> *i_plan,
+  static void execute_dft_c2r(plan_type i_plan,
                               complex_type *i_in, real_type *o_out)
   {
     if (!i_plan) return;
     detail::Execute2dC2r<T>(i_plan->width, i_plan->height,
-                            i_plan->outputRowStride, i_in, o_out);
+                            i_plan->outputRowStride, i_in, o_out,
+                            i_plan->intermediate);
   }
 
   static void destroy_plan(plan_type i_plan) { delete i_plan; }
