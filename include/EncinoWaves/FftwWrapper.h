@@ -30,6 +30,9 @@
 #include <Eigen/Core>
 #include <unsupported/Eigen/FFT>
 
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
+
 // Plan-flag values, kept so call sites compile; ignored here.
 #ifndef FFTW_ESTIMATE
 #define FFTW_ESTIMATE (1U << 6)
@@ -63,7 +66,16 @@ namespace detail
     int outputRowStride{0};
     std::complex<T> *defaultIn{nullptr};
     T *defaultOut{nullptr};
+    // Cached column-pass scratch, reused across execute() calls so the IFFT
+    // does not reallocate per frame. This makes a plan non-re-entrant: use one
+    // plan per worker thread, or serialize calls on a shared plan.
+    std::vector<std::complex<T>> intermediate;
   };
+
+  // Per-task TBB grain size: columns/rows handled by one task, which reuses a
+  // single thread-local Eigen::FFT across them. Small grids collapse to one
+  // task (no parallel overhead).
+  inline constexpr int kFftGrainSize = 8;
 
   // 2D complex-to-real inverse FFT.
   // Input:  slow x (fast/2+1) complex, row-major, hermitian along fast.
@@ -72,9 +84,12 @@ namespace detail
   // inverse yields 2*(halfFast-1) reals, which equals `fast` only when `fast`
   // is even. Odd `fast` is rejected by the guard below rather than overrunning
   // the copy-out.
+  // `scratch` is the caller-owned column-pass buffer, reused across calls; not
+  // safe to share between concurrent executions.
   template <typename T>
   inline void Execute2dC2r(int slow, int fast, int outputRowStride,
-                           const std::complex<T> *in, T *out)
+                           const std::complex<T> *in, T *out,
+                           std::vector<std::complex<T>> &scratch)
   {
     using Complex = std::complex<T>;
     using VecC = Eigen::Matrix<Complex, Eigen::Dynamic, 1>;
@@ -85,41 +100,58 @@ namespace detail
         in == nullptr || out == nullptr)
       return;
 
-    // Unscaled = unnormalized inverse (no 1/N); HalfSpectrum = N/2+1
-    // hermitian-packed input producing N real outputs.
-    Eigen::FFT<T> fftC2C;
-    fftC2C.SetFlag(Eigen::FFT<T>::Unscaled);
-    Eigen::FFT<T> fftC2R;
-    fftC2R.SetFlag(Eigen::FFT<T>::Unscaled);
-    fftC2R.SetFlag(Eigen::FFT<T>::HalfSpectrum);
+    // Reused column-pass scratch (resize only grows the allocation).
+    scratch.resize(static_cast<std::size_t>(slow) * halfFast);
+    Complex *intermediate = scratch.data();
 
-    // Pass 1: column pass (complex-to-complex of length slow).
-    const std::size_t cells = static_cast<std::size_t>(slow) * halfFast;
-    std::vector<Complex> intermediate(cells);
+    // Pass 1: column pass (complex-to-complex of length slow), parallel over
+    // the independent columns. Each task owns its Eigen::FFT (not shareable)
+    // and reuses it across its grain. Unscaled = unnormalized inverse (no 1/N).
+    const tbb::blocked_range<int> colRange(0, halfFast, kFftGrainSize);
+    tbb::parallel_for(colRange,
+        [&](const tbb::blocked_range<int> &range)
+        {
+          Eigen::FFT<T> fft;
+          fft.SetFlag(Eigen::FFT<T>::Unscaled);
+          VecC colIn(slow);
+          VecC colOut(slow);
+          for (int j = range.begin(); j != range.end(); ++j)
+          {
+            for (int i = 0; i < slow; ++i)
+              colIn(i) = in[static_cast<std::size_t>(i) * halfFast + j];
+            fft.inv(colOut, colIn);
+            for (int i = 0; i < slow; ++i)
+            {
+              const auto idx = static_cast<std::size_t>(i) * halfFast + j;
+              intermediate[idx] = colOut(i);
+            }
+          }
+        });
 
-    VecC colIn(slow);
-    VecC colOut(slow);
-    for (int j = 0; j < halfFast; ++j)
-    {
-      for (int i = 0; i < slow; ++i)
-        colIn(i) = in[static_cast<std::size_t>(i) * halfFast + j];
-      fftC2C.inv(colOut, colIn);
-      for (int i = 0; i < slow; ++i)
-        intermediate[static_cast<std::size_t>(i) * halfFast + j] = colOut(i);
-    }
-
-    // Pass 2: row pass (hermitian-to-real of length fast).
-    VecC rowIn(halfFast);
-    VecR rowOut(fast);
-    for (int i = 0; i < slow; ++i)
-    {
-      for (int j = 0; j < halfFast; ++j)
-        rowIn(j) = intermediate[static_cast<std::size_t>(i) * halfFast + j];
-      fftC2R.inv(rowOut, rowIn);
-      T *outRow = out + static_cast<std::size_t>(i) * outputRowStride;
-      for (int j = 0; j < fast; ++j)
-        outRow[j] = rowOut(j);
-    }
+    // Pass 2: row pass (hermitian-to-real of length fast), parallel over the
+    // independent rows. HalfSpectrum = N/2+1 hermitian-packed input, N reals.
+    const tbb::blocked_range<int> rowRange(0, slow, kFftGrainSize);
+    tbb::parallel_for(rowRange,
+        [&](const tbb::blocked_range<int> &range)
+        {
+          Eigen::FFT<T> fft;
+          fft.SetFlag(Eigen::FFT<T>::Unscaled);
+          fft.SetFlag(Eigen::FFT<T>::HalfSpectrum);
+          VecC rowIn(halfFast);
+          VecR rowOut(fast);
+          for (int i = range.begin(); i != range.end(); ++i)
+          {
+            for (int j = 0; j < halfFast; ++j)
+            {
+              const auto idx = static_cast<std::size_t>(i) * halfFast + j;
+              rowIn(j) = intermediate[idx];
+            }
+            fft.inv(rowOut, rowIn);
+            T *outRow = out + static_cast<std::size_t>(i) * outputRowStride;
+            for (int j = 0; j < fast; ++j)
+              outRow[j] = rowOut(j);
+          }
+        });
   }
 }  // namespace detail
 
@@ -188,15 +220,17 @@ struct FftwWrapperT
     if (!i_plan) return;
     detail::Execute2dC2r<T>(i_plan->width, i_plan->height,
                             i_plan->outputRowStride,
-                            i_plan->defaultIn, i_plan->defaultOut);
+                            i_plan->defaultIn, i_plan->defaultOut,
+                            i_plan->intermediate);
   }
 
-  static void execute_dft_c2r(const detail::Plan<T> *i_plan,
+  static void execute_dft_c2r(plan_type i_plan,
                               complex_type *i_in, real_type *o_out)
   {
     if (!i_plan) return;
     detail::Execute2dC2r<T>(i_plan->width, i_plan->height,
-                            i_plan->outputRowStride, i_in, o_out);
+                            i_plan->outputRowStride, i_in, o_out,
+                            i_plan->intermediate);
   }
 
   static void destroy_plan(plan_type i_plan) { delete i_plan; }
