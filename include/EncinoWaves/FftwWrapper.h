@@ -115,13 +115,15 @@ namespace detail
     Complex *intermediate = scratch.data();
 
     // Pass 1: column pass (complex-to-complex of length slow), parallel over
-    // the independent columns. Each task owns its Eigen::FFT (not shareable)
-    // and reuses it across its grain. Unscaled = unnormalized inverse (no 1/N).
+    // the independent columns. The Eigen::FFT is thread-local and persists
+    // across calls, so its KissFFT twiddle cache is reused frame to frame; a
+    // worker only ever touches its own, never concurrently. Unscaled =
+    // unnormalized inverse (no 1/N).
     const tbb::blocked_range<int> colRange(0, halfFast, kFftGrainSize);
     tbb::parallel_for(colRange,
         [&](const tbb::blocked_range<int> &range)
         {
-          Eigen::FFT<T> fft;
+          static thread_local Eigen::FFT<T> fft;
           fft.SetFlag(Eigen::FFT<T>::Unscaled);
           VecC colIn(slow);
           VecC colOut(slow);
@@ -144,7 +146,7 @@ namespace detail
     tbb::parallel_for(rowRange,
         [&](const tbb::blocked_range<int> &range)
         {
-          Eigen::FFT<T> fft;
+          static thread_local Eigen::FFT<T> fft;
           fft.SetFlag(Eigen::FFT<T>::Unscaled);
           fft.SetFlag(Eigen::FFT<T>::HalfSpectrum);
           VecC rowIn(halfFast);
