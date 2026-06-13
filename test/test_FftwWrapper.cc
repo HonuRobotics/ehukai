@@ -22,6 +22,12 @@
  *      plan, and the thin threading / alloc / null-plan surface.
  *   10. A 64x64 grid that splits across TBB tasks — parallel result matches
  *      the serial DC→constant expectation.
+ *   11. A 64x64 2D sinusoid (energy in both the slow and fast directions) run
+ *      serially (TBB capped to one thread) and in parallel: each matches the
+ *      closed-form inverse and the two are bit-identical to each other. Unlike
+ *      test 10's DC spectrum, every output cell is position-dependent, so a
+ *      grain-ordering bug or a race in the column→intermediate→row handoff is
+ *      observable.
  *
  * The float and double specializations are exercised independently.
  */
@@ -314,6 +320,72 @@ int RunForType(const char *typeName)
     FFT::execute(plan);
     FFT::destroy_plan(plan);
     return MaxAbsDiff(bigOut, dc, static_cast<T>(1e-4));
+  });
+
+  // --- Test 11: parallel result == serial result == analytic (N=64) -------
+  // Test 10's DC spectrum yields a constant field that is blind to column/row
+  // ordering. Here a 2D sinusoid with energy in BOTH directions makes every
+  // output cell position-dependent. Under FFTW's unnormalized inverse the
+  // hermitian-packed coefficients
+  //     X[1,0] = X[N-1,0] = X[0,1] = N*N/2
+  // invert to the separable field
+  //     x[i,j] = N*N * (cos(2π·i/N) + cos(2π·j/N)).
+  // At N=64 both passes split into several TBB grains. We run the same plan
+  // serially (TBB capped to one thread) and in parallel (all cores) and require
+  // (a) the serial output to match the closed-form field and (b) the parallel
+  // output to be bit-identical to the serial one — so a grain-ordering bug is
+  // caught by (a) and a data race by (b).
+  Check("64x64 sinusoid → serial == parallel == analytic", failures, [&]() {
+    constexpr int N = 64;
+    const int nHalf = (N / 2) + 1;
+    std::vector<Complex> sinSpec(static_cast<std::size_t>(N) * nHalf,
+                                 Complex(0, 0));
+    const T amp = T(N) * T(N) * T(0.5);
+    At<T>(sinSpec, N, N, 1, 0) = Complex(amp, 0);        // slow-direction mode
+    At<T>(sinSpec, N, N, N - 1, 0) = Complex(amp, 0);    //   ...and its conj
+    At<T>(sinSpec, N, N, 0, 1) = Complex(amp, 0);        // fast-direction mode
+
+    std::vector<T> outSerial(static_cast<std::size_t>(N) * N, T(0));
+    std::vector<T> outParallel(static_cast<std::size_t>(N) * N, T(0));
+
+    auto plan =
+        FFT::plan_dft_c2r_2d(N, N, sinSpec.data(), outSerial.data(), 0u);
+    FFT::plan_with_nthreads(1);  // cap TBB to one thread → serial execution
+    FFT::execute(plan);          // → outSerial (the plan's default output)
+    FFT::plan_with_nthreads(0);  // restore the TBB default (all cores)
+    FFT::execute_dft_c2r(plan, sinSpec.data(), outParallel.data());  // parallel
+    FFT::destroy_plan(plan);
+
+    const T scale = T(N) * T(N);
+    const T tol = scale * static_cast<T>(1e-4);  // values ~ N*N, scale rel. tol
+    T maxAnalytic = T(0);
+    T maxSerialVsParallel = T(0);
+    for (int i = 0; i < N; ++i)
+    {
+      for (int j = 0; j < N; ++j)
+      {
+        const T expected = scale *
+            (static_cast<T>(std::cos(2.0 * M_PI * i / N)) +
+             static_cast<T>(std::cos(2.0 * M_PI * j / N)));
+        const T s = OutAt<T>(outSerial, N, N, i, j);
+        const T p = OutAt<T>(outParallel, N, N, i, j);
+        maxAnalytic = std::max(maxAnalytic, std::abs(s - expected));
+        maxSerialVsParallel = std::max(maxSerialVsParallel, std::abs(s - p));
+      }
+    }
+    if (maxSerialVsParallel != T(0))
+    {
+      std::cout << "(serial != parallel, max diff = " << maxSerialVsParallel
+                << ") ";
+      return false;
+    }
+    if (maxAnalytic > tol)
+    {
+      std::cout << "(analytic mismatch, max diff = " << maxAnalytic
+                << ", tol = " << tol << ") ";
+      return false;
+    }
+    return true;
   });
 
   if (failures == 0)
