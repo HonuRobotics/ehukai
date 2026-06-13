@@ -28,6 +28,9 @@
  *      test 10's DC spectrum, every output cell is position-dependent, so a
  *      grain-ordering bug or a race in the column→intermediate→row handoff is
  *      observable.
+ *   12. The same plan executed twice with two different spectra — the cached
+ *      column-pass scratch (Plan::intermediate) is reused frame to frame
+ *      without leaking the first result into the second.
  *
  * The float and double specializations are exercised independently.
  */
@@ -386,6 +389,57 @@ int RunForType(const char *typeName)
       return false;
     }
     return true;
+  });
+
+  // --- Test 12: one plan, two execute() calls — scratch reuse is correct ---
+  // The core new feature: Plan::intermediate is cached and reused across
+  // execute() calls so the IFFT does not reallocate per frame. Push two
+  // DIFFERENT spectra through the SAME plan and require each output to reflect
+  // only its own input. A stale scratch pointer or leftover intermediate from
+  // frame A would corrupt frame B. N=64 so the reuse also covers the parallel
+  // (multi-grain) scratch.
+  Check("same plan, two execute() calls → independent correct outputs",
+        failures, [&]() {
+    constexpr int N = 64;
+    const int nHalf = (N / 2) + 1;
+    std::vector<Complex> specR(static_cast<std::size_t>(N) * nHalf,
+                               Complex(0, 0));
+    std::vector<T> outR(static_cast<std::size_t>(N) * N, T(0));
+    auto plan = FFT::plan_dft_c2r_2d(N, N, specR.data(), outR.data(), 0u);
+
+    const T scale = T(N) * T(N);
+    const T tol = scale * static_cast<T>(1e-4);
+
+    // Frame A: a slow-direction cosine → N*N·cos(2π·i/N) (varies across rows).
+    const T amp = scale * T(0.5);
+    At<T>(specR, N, N, 1, 0) = Complex(amp, 0);
+    At<T>(specR, N, N, N - 1, 0) = Complex(amp, 0);
+    std::fill(outR.begin(), outR.end(), T(-123));  // poison before execute
+    FFT::execute(plan);                            // 1st use of plan scratch
+    for (int i = 0; i < N; ++i)
+    {
+      const T expected =
+          scale * static_cast<T>(std::cos(2.0 * M_PI * i / N));
+      for (int j = 0; j < N; ++j)
+      {
+        if (std::abs(OutAt<T>(outR, N, N, i, j) - expected) > tol)
+        {
+          std::cout << "(frame A mismatch at (" << i << "," << j << ")) ";
+          FFT::destroy_plan(plan);
+          return false;
+        }
+      }
+    }
+
+    // Frame B: a pure DC spectrum → constant field, through the same plan.
+    // If frame A's intermediate leaked, this constant would be corrupted.
+    std::fill(specR.begin(), specR.end(), Complex(0, 0));
+    const T dc = T(5.5);
+    specR[0] = Complex(dc, 0);  // X[0,0]
+    std::fill(outR.begin(), outR.end(), T(-123));  // poison again
+    FFT::execute(plan);                            // 2nd use of plan scratch
+    FFT::destroy_plan(plan);
+    return MaxAbsDiff(outR, dc, static_cast<T>(1e-4));
   });
 
   if (failures == 0)
