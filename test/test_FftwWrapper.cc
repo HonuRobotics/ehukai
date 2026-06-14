@@ -31,6 +31,17 @@
  *   12. The same plan executed twice with two different spectra — the cached
  *      column-pass scratch (Plan::intermediate) is reused frame to frame
  *      without leaking the first result into the second.
+ *   13. The same plan driven CONCURRENTLY from several threads via the new-array
+ *      execute. This is the FFTW-blessed thread-safe pattern — distinct in/out
+ *      arrays, plan read-only during execute — and EncinoWaves drives that very
+ *      API (SpectralSpatialField.h). It combines PARALLELISM (N=64 splits each
+ *      execute across TBB grains) with CONCURRENCY (several executes in flight
+ *      at once), the gap tests 11 (one execute, intra-execute TBB only) and 12
+ *      (sequential reuse) leave open. Each thread inverts its own sinusoid and
+ *      must read back only its own analytic field. The cached-in-plan scratch
+ *      (Plan::intermediate) makes concurrent executes race on one buffer and
+ *      silently corrupt each other, so this test FAILS until the scratch is
+ *      made private per execute (out of the plan).
  *
  * The float and double specializations are exercised independently.
  */
@@ -38,10 +49,12 @@
 #include "EncinoWaves/FftwWrapper.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <complex>
 #include <cstdlib>
 #include <iostream>
+#include <thread>
 #include <vector>
 
 namespace
@@ -440,6 +453,89 @@ int RunForType(const char *typeName)
     FFT::execute(plan);                            // 2nd use of plan scratch
     FFT::destroy_plan(plan);
     return MaxAbsDiff(outR, dc, static_cast<T>(1e-4));
+  });
+
+  // --- Test 13: parallelism + concurrency — concurrent shared-plan execute ---
+  // Tests 11 and 12 only ever have ONE execute running at a time: test 11's
+  // "parallel" is intra-execute TBB (a single call), test 12 is sequential
+  // reuse. Neither runs two executes CONCURRENTLY, so neither covers the
+  // pattern FFTW documents as thread-safe — one plan driven from several
+  // threads via the new-array execute (fftw_execute_dft_c2r) with different
+  // in/out arrays, the plan staying read-only
+  //
+  // N=64 makes each execute ALSO split across TBB grains, so this case exercises
+  // PARALLELISM (inside each execute) and CONCURRENCY (across executes) at once.
+  // Each thread inverts its own distinct sinusoid
+  //     x_t[i,j] = (t+1)·N*N·(cos(2π·i/N) + cos(2π·j/N))
+  // and must read back ONLY its own analytic field; picking up another thread's
+  // magnitude is a corrupted cell.
+  Check("concurrent shared-plan execute → each thread stays correct "
+        "(parallelism + concurrency)", failures, [&]() {
+    constexpr int N = 64;          // even → multi-grain parallel path
+    constexpr int kThreads = 4;    // concurrent drivers of ONE shared plan
+    constexpr int kRounds = 100;   // give the nondeterministic race chances
+    const int nHalf = (N / 2) + 1;
+    const T scale = T(N) * T(N);
+
+    // Per-thread distinct spectra + outputs (different in/out arrays, as the
+    // new-array execute contract allows). Thread t's amplitude is (t+1)×, so a
+    // cell that leaks from thread t' shows up as the wrong magnitude.
+    std::vector<std::vector<Complex>> specs(kThreads);
+    std::vector<std::vector<T>> outs(kThreads);
+    for (int t = 0; t < kThreads; ++t)
+    {
+      specs[t].assign(static_cast<std::size_t>(N) * nHalf, Complex(0, 0));
+      outs[t].assign(static_cast<std::size_t>(N) * N, T(0));
+      const T amp = scale * T(0.5) * static_cast<T>(t + 1);
+      At<T>(specs[t], N, N, 1, 0) = Complex(amp, 0);      // slow-direction mode
+      At<T>(specs[t], N, N, N - 1, 0) = Complex(amp, 0);  //   ...and its conj
+      At<T>(specs[t], N, N, 0, 1) = Complex(amp, 0);      // fast-direction mode
+    }
+
+    // One plan, DELIBERATELY shared across all driver threads.
+    auto plan = FFT::plan_dft_c2r_2d(N, N, specs[0].data(), outs[0].data(), 0u);
+
+    std::atomic<int> badCells{0};
+    auto driver = [&](int t)
+    {
+      const T tol = static_cast<T>(t + 1) * scale * static_cast<T>(1e-3);
+      for (int r = 0; r < kRounds; ++r)
+      {
+        std::fill(outs[t].begin(), outs[t].end(), T(-999));  // poison
+        FFT::execute_dft_c2r(plan, specs[t].data(), outs[t].data());
+        for (int i = 0; i < N; ++i)
+        {
+          for (int j = 0; j < N; ++j)
+          {
+            const T expected = static_cast<T>(t + 1) * scale *
+                (static_cast<T>(std::cos(2.0 * M_PI * i / N)) +
+                 static_cast<T>(std::cos(2.0 * M_PI * j / N)));
+            const T v = OutAt<T>(outs[t], N, N, i, j);
+            if (!std::isfinite(v) || std::abs(v - expected) > tol)
+              badCells.fetch_add(1, std::memory_order_relaxed);
+          }
+        }
+      }
+    };
+
+    std::vector<std::thread> pool;
+    pool.reserve(kThreads);
+    for (int t = 0; t < kThreads; ++t)
+      pool.emplace_back(driver, t);
+    for (auto &th : pool)
+      th.join();
+
+    FFT::destroy_plan(plan);
+
+    const int bad = badCells.load();
+    if (bad != 0)
+    {
+      std::cout << "(" << bad << " corrupted cells over " << kThreads
+                << " threads x " << kRounds
+                << " rounds — concurrent executes raced on Plan::intermediate) ";
+      return false;
+    }
+    return true;
   });
 
   if (failures == 0)
