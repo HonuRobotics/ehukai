@@ -1,1 +1,4 @@
 /build/
+# local sanitizer build trees (see CMake -DSANITIZE and .github/workflows/ci.yml)
+/build-asan/
+/build-tsan/

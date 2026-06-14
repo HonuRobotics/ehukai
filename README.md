@@ -84,6 +84,43 @@ Install (optional — headers, shared library, and the `EncinoWaves` CMake confi
 sudo cmake --install build
 ```
 
+
+## Continuous integration
+
+`.github/workflows/ci.yml` builds the library and runs the headless smoke tests
+under two sanitizers on **Ubuntu Noble (24.04)** and **Resolute (26.04)**:
+
+| Job       | Flags                          | Catches                                  |
+| --------- | ------------------------------ | ---------------------------------------- |
+| `address` | `-fsanitize=address,undefined` | heap/stack errors, leaks, undefined behaviour |
+| `thread`  | `-fsanitize=thread`            | data races                               |
+
+Pick a sanitizer at configure time with `-DSANITIZE=address|thread` and reproduce
+either job locally:
+
+```sh
+cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSANITIZE=address
+cmake --build build-asan -j
+ctest --test-dir build-asan --output-on-failure
+```
+
+Two environment notes the CI bakes in, needed for the **thread** job:
+
+- The system `libtbb` is not TSan-instrumented, so TBB's work-stealing scheduler
+  trips benign races. `test/tsan.supp` (`TSAN_OPTIONS=suppressions=...`) silences
+  only those; real findings are untouched.
+- GCC's libtsan shadow layout collides with high-entropy ASLR
+  (`FATAL: unexpected memory mapping`). Run the tests under `setarch -R` (no root)
+  to disable per-process randomization.
+
+> **Known failure.** The suite is intentionally red: `test_FftwWrapper` *Test 13*
+> drives one FFT plan concurrently from several threads and documents a real data
+> race on the cached per-plan scratch (`FftwWrapper.h`, `Plan::intermediate`) — a
+> plan is non-re-entrant, so a shared plan must be serialized or used one-per-thread.
+> ASan reports the leaked scratch, TSan the race, and the test's own numerical
+> check the corrupted cells. Every other test passes; the race is kept visible
+> until it is fixed.
+
 Consume it from another CMake project:
 
 ```cmake
