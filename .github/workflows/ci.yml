@@ -1,0 +1,90 @@
+name: CI
+
+# AddressSanitizer (ASan + UBSan + LeakSanitizer) and ThreadSanitizer builds of
+# EncinoWaves, exercised by the headless smoke tests on Ubuntu Noble (24.04) and
+# Resolute (26.04). Reproduce a job locally with, e.g.:
+#
+#   cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSANITIZE=address
+#   cmake --build build-asan -j && ctest --test-dir build-asan --output-on-failure
+#
+# KNOWN-RED: the suite intentionally fails on this branch. test_FftwWrapper
+# "Test 13" drives one FFT plan concurrently from several threads and documents a
+# real data race on the cached per-plan scratch (FftwWrapper.h, Plan::intermediate):
+# ASan reports the leaked scratch, TSan reports the race, and the test's own
+# numerical check reports the corrupted cells. The race is kept visible here until
+# it is fixed; every other test passes. See README "Continuous integration".
+
+on:
+  push:
+    branches: [ master, "jrivero/**" ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sanitize:
+    name: ${{ matrix.sanitizer }} · ${{ matrix.codename }}
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.image }}
+      # LeakSanitizer ptraces its own process at exit; the default container
+      # lacks that capability and LSan would fatal-error on every test. (The
+      # default seccomp profile already permits the personality() call that
+      # setarch -R needs for the TSan ASLR workaround, so no seccomp change.)
+      options: --cap-add=SYS_PTRACE
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: "ubuntu:24.04", codename: noble,    sanitizer: address }
+          - { image: "ubuntu:24.04", codename: noble,    sanitizer: thread  }
+          - { image: "ubuntu:26.04", codename: resolute, sanitizer: address }
+          - { image: "ubuntu:26.04", codename: resolute, sanitizer: thread  }
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      # The bare ubuntu images ship no git; install it (and the toolchain) before
+      # actions/checkout so it performs a real clone. util-linux provides setarch,
+      # needed by the ThreadSanitizer job below.
+      - name: Install toolchain and dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git cmake build-essential \
+            libeigen3-dev libtbb-dev libimath-dev util-linux
+
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Configure (sanitizer=${{ matrix.sanitizer }})
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DSANITIZE=${{ matrix.sanitizer }}
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Test
+        run: |
+          export ASAN_OPTIONS="abort_on_error=1:detect_leaks=1:strict_string_checks=1"
+          export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1"
+          if [ "${{ matrix.sanitizer }}" = "thread" ]; then
+            # The system libtbb is not TSan-instrumented, so its work-stealing
+            # scheduler trips benign races; test/tsan.supp silences only those.
+            # halt_on_error=1 aborts on the first *unsuppressed* (real) race so
+            # the known shared-plan race fails fast instead of grinding through
+            # its 100-round loop under TSan's heavy instrumentation.
+            export TSAN_OPTIONS="suppressions=$PWD/test/tsan.supp:halt_on_error=1"
+            # GCC's libtsan shadow layout collides with the runner's high-entropy
+            # ASLR ("FATAL: unexpected memory mapping"). setarch -R disables
+            # per-process randomization (no root); the ADDR_NO_RANDOMIZE
+            # personality is inherited by every binary ctest spawns.
+            setarch -R ctest --test-dir build --output-on-failure
+          else
+            ctest --test-dir build --output-on-failure
+          fi

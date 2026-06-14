@@ -1,0 +1,20 @@
+# ThreadSanitizer suppressions for EncinoWaves.
+#
+# oneTBB's work-stealing scheduler (partitioner, blocked_range, start_for,
+# small-object pool) coordinates worker threads with atomics and fences that
+# ThreadSanitizer cannot see through, because the system libtbb shipped by
+# Ubuntu's libtbb-dev is built WITHOUT -fsanitize=thread instrumentation. TSan
+# therefore reports benign data races deep inside the TBB runtime whenever a
+# parallel_for splits work across threads (e.g. test_Propagation's spectral
+# sweeps). These are false positives, not bugs in EncinoWaves.
+#
+# Real EncinoWaves concurrency findings are NOT silenced by this file: they
+# fail their own functional assertions (see test_FftwWrapper Test 13, the
+# documented shared-plan scratch race) independently of TSan's race reports.
+#
+# To see the raw TBB reports, run with TSAN_OPTIONS unset (no suppressions).
+
+# Races attributed to the inlined TBB scheduler templates (partitioner,
+# blocked_range, start_for, small-object pool) compiled into the test binaries.
+# This single pattern covers every benign TBB-runtime report observed.
+race:tbb::detail::
