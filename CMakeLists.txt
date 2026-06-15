@@ -19,9 +19,15 @@ endif()
 # EncinoWaves/Exception.h.
 add_compile_options(-Wno-unused-function)
 
-find_package(Eigen3 REQUIRED NO_MODULE)   # header-only; FFT via unsupported/Eigen/FFT
-find_package(TBB    REQUIRED)             # parallel sweeps in Propagation.h
-find_package(Imath  REQUIRED)             # BSD-3 math types (OpenEXR project)
+# Single source of truth for dependency version floors; reused on the consumer
+# side via EncinoWavesConfig.cmake.in so the two never drift.
+set(EW_EIGEN3_MIN 3.4)
+set(EW_TBB_MIN    2021)
+set(EW_IMATH_MIN  3.1)
+
+find_package(Eigen3 ${EW_EIGEN3_MIN} REQUIRED NO_MODULE)  # header-only; Eigen::FFT
+find_package(TBB    ${EW_TBB_MIN}    REQUIRED)            # parallel sweeps
+find_package(Imath  ${EW_IMATH_MIN}  REQUIRED)            # BSD-3 math types
 
 add_library(${PROJECT_NAME} SHARED
   src/Foundation.cpp
