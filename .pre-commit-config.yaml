@@ -20,10 +20,9 @@ repos:
       - id: cppcheck
         name: cppcheck
         # The .h parses as C++ only with --language=c++; --error-exitcode makes
-        # findings fail the commit (cppcheck otherwise exits 0).
-        entry: cppcheck --enable=warning,style,performance,portability --std=c++17 --language=c++ --suppress=missingIncludeSystem --error-exitcode=2 -I include
+        # findings fail the commit (cppcheck otherwise exits 0). cppcheck follows
+        # #includes, so .cppcheck-suppressions silences the upstream headers the
+        # integration tests pull in (the analog of clang-tidy's HeaderFilterRegex).
+        entry: cppcheck --enable=warning,style,performance,portability --std=c++17 --language=c++ --suppressions-list=.cppcheck-suppressions --error-exitcode=2 -I include
         language: system
-        # The integration tests #include All.h (upstream), and cppcheck follows
-        # includes — keep it on the shim-only files so it does not report
-        # pre-existing upstream findings.
-        files: '^(include/EncinoWaves/FftwWrapper\.h|test/test_FftwWrapper\.cc)$'
+        files: '^(include/EncinoWaves/FftwWrapper\.h|test/.*\.cc)$'
