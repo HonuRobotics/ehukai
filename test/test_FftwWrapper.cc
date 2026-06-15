@@ -19,8 +19,13 @@
  *      with FFTW's unnormalized convention.
  *   4-5. Caller-supplied buffers and padded-output row strides.
  *   6-9. Defensive guards (null input, odd inner dim), the non-padded guru
- *      plan, and the thin threading / alloc / null-plan surface — covering
- *      the full shim API.
+ *      plan, and the thin threading / alloc / null-plan surface.
+ *   10-12. Surface shapes the earlier tests miss: a column-axis cosine (drives
+ *      the Hermitian row pass on non-flat input), a sine (verifies phase is
+ *      kept), and a diagonal (both axes at once).
+ *   13. A random spectrum checked against an independent brute-force inverse
+ *      DFT — mirrors real multi-mode, randomized-phase use.
+ *   14. A non-square (8x4) grid.
  *
  * The float and double specializations are exercised independently.
  */
@@ -32,6 +37,7 @@
 #include <complex>
 #include <cstdlib>
 #include <iostream>
+#include <random>
 #include <vector>
 
 namespace
@@ -295,6 +301,186 @@ int RunForType(const char *typeName)
                                        [](T v) { return v == T(13); });
     if (!untouched) std::cout << "(odd-dim output was written) ";
     return untouched;
+  });
+
+  // --- Test 10: cosine along the columns (the fast / Hermitian axis) -----
+  // Mirror of Test 3 but across the columns. A single bin X[0,1] (no slow
+  // conjugate partner — the fast axis is the half-stored one) must yield
+  // out[i][j] = scale * cos(2π·j / Fast). This drives the Hermitian row pass
+  // on non-flat input, which Tests 1-9 never do.
+  Check("column cosine → cos along the fast axis", failures, [&]() {
+    std::fill(spec.begin(), spec.end(), Complex(0, 0));
+    const T amp = T(Slow) * T(Fast) * T(0.5);
+    At<T>(spec, Slow, Fast, 0, 1) = Complex(amp, 0);
+    std::fill(out.begin(), out.end(), T(0));
+    auto plan = FFT::plan_dft_c2r_2d(Slow, Fast, spec.data(), out.data(), 0u);
+    FFT::execute(plan);
+    FFT::destroy_plan(plan);
+
+    const T scale = T(Slow) * T(Fast);
+    const T tol = static_cast<T>(1e-4);
+    T maxDiff = T(0);
+    for (int i = 0; i < Slow; ++i)
+    {
+      for (int j = 0; j < Fast; ++j)
+      {
+        const T expected = scale * static_cast<T>(
+            std::cos(2.0 * M_PI * static_cast<double>(j) / Fast));
+        const T d = std::abs(OutAt<T>(out, Slow, Fast, i, j) - expected);
+        if (d > maxDiff) maxDiff = d;
+      }
+    }
+    if (maxDiff > tol)
+      std::cout << "(max diff = " << maxDiff << ", tol = " << tol << ") ";
+    return maxDiff <= tol;
+  });
+
+  // --- Test 11: sine / phase (imaginary coefficients) --------------------
+  // Same bins as Test 3 but imaginary, so the result is a sine. If Test 3
+  // (cosine) passes and this fails, phase is being dropped somewhere.
+  Check("slow-direction sine → sin (phase preserved)", failures, [&]() {
+    std::fill(spec.begin(), spec.end(), Complex(0, 0));
+    const T amp = T(Slow) * T(Fast) * T(0.5);
+    At<T>(spec, Slow, Fast, 1, 0) = Complex(0, -amp);
+    At<T>(spec, Slow, Fast, Slow - 1, 0) = Complex(0, amp);
+    std::fill(out.begin(), out.end(), T(0));
+    auto plan = FFT::plan_dft_c2r_2d(Slow, Fast, spec.data(), out.data(), 0u);
+    FFT::execute(plan);
+    FFT::destroy_plan(plan);
+
+    const T scale = T(Slow) * T(Fast);
+    const T tol = static_cast<T>(1e-4);
+    T maxDiff = T(0);
+    for (int i = 0; i < Slow; ++i)
+    {
+      const T expected = scale * static_cast<T>(
+          std::sin(2.0 * M_PI * static_cast<double>(i) / Slow));
+      for (int j = 0; j < Fast; ++j)
+      {
+        const T d = std::abs(OutAt<T>(out, Slow, Fast, i, j) - expected);
+        if (d > maxDiff) maxDiff = d;
+      }
+    }
+    if (maxDiff > tol)
+      std::cout << "(max diff = " << maxDiff << ", tol = " << tol << ") ";
+    return maxDiff <= tol;
+  });
+
+  // --- Test 12: diagonal mode (both axes at once) ------------------------
+  // One bin X[1,1]; the half-spectrum supplies the conjugate partner, giving
+  // out[i][j] = scale * cos(2π·(i/Slow + j/Fast)). Exercises both passes.
+  Check("diagonal cosine → cos(i/Slow + j/Fast)", failures, [&]() {
+    std::fill(spec.begin(), spec.end(), Complex(0, 0));
+    const T amp = T(Slow) * T(Fast) * T(0.5);
+    At<T>(spec, Slow, Fast, 1, 1) = Complex(amp, 0);
+    std::fill(out.begin(), out.end(), T(0));
+    auto plan = FFT::plan_dft_c2r_2d(Slow, Fast, spec.data(), out.data(), 0u);
+    FFT::execute(plan);
+    FFT::destroy_plan(plan);
+
+    const T scale = T(Slow) * T(Fast);
+    const T tol = static_cast<T>(1e-4);
+    T maxDiff = T(0);
+    for (int i = 0; i < Slow; ++i)
+    {
+      for (int j = 0; j < Fast; ++j)
+      {
+        const double phase = 2.0 * M_PI *
+            (static_cast<double>(i) / Slow + static_cast<double>(j) / Fast);
+        const T expected = scale * static_cast<T>(std::cos(phase));
+        const T d = std::abs(OutAt<T>(out, Slow, Fast, i, j) - expected);
+        if (d > maxDiff) maxDiff = d;
+      }
+    }
+    if (maxDiff > tol)
+      std::cout << "(max diff = " << maxDiff << ", tol = " << tol << ") ";
+    return maxDiff <= tol;
+  });
+
+  // --- Test 13: random field vs. an independent brute-force inverse DFT --
+  // Fill the free columns (kf = 1 .. Fast/2-1) with random complex values and
+  // leave the self-conjugate columns (kf = 0, Fast/2) zero so the result is
+  // real. Compare the shim against a direct inverse DFT over the same
+  // Hermitian-completed spectrum — a reference independent of the shim.
+  Check("random spectrum → matches brute-force inverse DFT", failures, [&]() {
+    // NOLINTNEXTLINE(cert-msc32-c,cert-msc51-cpp): reproducible test seed
+    std::mt19937 rng(12345u);
+    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+    std::fill(spec.begin(), spec.end(), Complex(0, 0));
+    for (int ks = 0; ks < Slow; ++ks)
+      for (int kf = 1; kf < Fast / 2; ++kf)
+        At<T>(spec, Slow, Fast, ks, kf) =
+            Complex(static_cast<T>(dist(rng)), static_cast<T>(dist(rng)));
+
+    std::fill(out.begin(), out.end(), T(0));
+    auto plan = FFT::plan_dft_c2r_2d(Slow, Fast, spec.data(), out.data(), 0u);
+    FFT::execute(plan);
+    FFT::destroy_plan(plan);
+
+    // Complete the full Fast spectrum via Hermitian symmetry,
+    // X[ks][Fast-kf] = conj(X[(Slow-ks) % Slow][kf]).
+    std::vector<std::complex<double>> full(
+        static_cast<std::size_t>(Slow) * Fast);
+    for (int ks = 0; ks < Slow; ++ks)
+    {
+      for (int kf = 0; kf < Fast; ++kf)
+      {
+        // Above the Nyquist column, mirror to the stored conjugate partner.
+        const bool mirror = kf > Fast / 2;
+        const int sks = mirror ? (Slow - ks) % Slow : ks;
+        const int skf = mirror ? Fast - kf : kf;
+        const Complex &s = At<T>(spec, Slow, Fast, sks, skf);
+        std::complex<double> x(s.real(), s.imag());
+        if (mirror) x = std::conj(x);
+        full[static_cast<std::size_t>(ks) * Fast + kf] = x;
+      }
+    }
+
+    const T tol = static_cast<T>(1e-3);
+    T maxDiff = T(0);
+    for (int i = 0; i < Slow; ++i)
+    {
+      for (int j = 0; j < Fast; ++j)
+      {
+        std::complex<double> acc(0, 0);
+        for (int ks = 0; ks < Slow; ++ks)
+        {
+          for (int kf = 0; kf < Fast; ++kf)
+          {
+            const double ang = 2.0 * M_PI *
+                (static_cast<double>(ks) * i / Slow +
+                 static_cast<double>(kf) * j / Fast);
+            acc += full[static_cast<std::size_t>(ks) * Fast + kf] *
+                   std::complex<double>(std::cos(ang), std::sin(ang));
+          }
+        }
+        const T d = std::abs(OutAt<T>(out, Slow, Fast, i, j) -
+                             static_cast<T>(acc.real()));
+        if (d > maxDiff) maxDiff = d;
+      }
+    }
+    if (maxDiff > tol)
+      std::cout << "(max diff = " << maxDiff << ", tol = " << tol << ") ";
+    return maxDiff <= tol;
+  });
+
+  // --- Test 14: non-square grid (Slow != Fast) ---------------------------
+  // plan_dft_c2r_2d handles rectangles; pin a DC spectrum → constant on an
+  // 8x4 grid so a future change cannot silently break non-square support.
+  Check("non-square 8x4 DC spectrum → constant", failures, [&]() {
+    constexpr int NsSlow = 8;
+    constexpr int NsFast = 4;
+    const int nsHalf = (NsFast / 2) + 1;
+    std::vector<Complex> nsSpec(
+        static_cast<std::size_t>(NsSlow) * nsHalf, Complex(0, 0));
+    std::vector<T> nsOut(static_cast<std::size_t>(NsSlow) * NsFast, T(0));
+    const T dc = T(2);
+    nsSpec[0] = Complex(dc, 0);  // X[0,0]
+    auto plan = FFT::plan_dft_c2r_2d(NsSlow, NsFast, nsSpec.data(),
+                                     nsOut.data(), 0u);
+    FFT::execute(plan);
+    FFT::destroy_plan(plan);
+    return MaxAbsDiff(nsOut, dc, static_cast<T>(1e-5));
   });
 
   if (failures == 0)
