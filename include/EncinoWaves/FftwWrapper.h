@@ -68,10 +68,6 @@ namespace detail
     int outputRowStride{0};
     std::complex<T> *defaultIn{nullptr};
     T *defaultOut{nullptr};
-    // Cached column-pass scratch, reused across execute() calls so the IFFT
-    // does not reallocate per frame. This makes a plan non-re-entrant: use one
-    // plan per worker thread, or serialize calls on a shared plan.
-    std::vector<std::complex<T>> intermediate;
   };
 
   // Process-wide TBB concurrency cap set by plan_with_nthreads (the FFTW
@@ -94,12 +90,12 @@ namespace detail
   // inverse yields 2*(halfFast-1) reals, which equals `fast` only when `fast`
   // is even. Odd `fast` is rejected by the guard below rather than overrunning
   // the copy-out.
-  // `scratch` is the caller-owned column-pass buffer, reused across calls; not
-  // safe to share between concurrent executions.
+  // The column-pass scratch is a per-call local, so one plan may be executed
+  // concurrently with different in/out buffers — matching FFTW's documented
+  // thread-safety contract that SpectralSpatialField relies on.
   template <typename T>
   inline void Execute2dC2r(int slow, int fast, int outputRowStride,
-                           const std::complex<T> *in, T *out,
-                           std::vector<std::complex<T>> &scratch)
+                           const std::complex<T> *in, T *out)
   {
     using Complex = std::complex<T>;
     using VecC = Eigen::Matrix<Complex, Eigen::Dynamic, 1>;
@@ -110,8 +106,9 @@ namespace detail
         in == nullptr || out == nullptr)
       return;
 
-    // Reused column-pass scratch (resize only grows the allocation).
-    scratch.resize(static_cast<std::size_t>(slow) * halfFast);
+    // Per-call column-pass scratch — never shared, so concurrent executions of
+    // the same plan do not race on it.
+    std::vector<Complex> scratch(static_cast<std::size_t>(slow) * halfFast);
     Complex *intermediate = scratch.data();
 
     // Pass 1: column pass (complex-to-complex of length slow), parallel over
@@ -245,17 +242,15 @@ struct FftwWrapperT
     if (!i_plan) return;
     detail::Execute2dC2r<T>(i_plan->width, i_plan->height,
                             i_plan->outputRowStride,
-                            i_plan->defaultIn, i_plan->defaultOut,
-                            i_plan->intermediate);
+                            i_plan->defaultIn, i_plan->defaultOut);
   }
 
-  static void execute_dft_c2r(plan_type i_plan,
+  static void execute_dft_c2r(const detail::Plan<T> *i_plan,
                               complex_type *i_in, real_type *o_out)
   {
     if (!i_plan) return;
     detail::Execute2dC2r<T>(i_plan->width, i_plan->height,
-                            i_plan->outputRowStride, i_in, o_out,
-                            i_plan->intermediate);
+                            i_plan->outputRowStride, i_in, o_out);
   }
 
   static void destroy_plan(plan_type i_plan) { delete i_plan; }
