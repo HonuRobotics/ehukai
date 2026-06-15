@@ -54,7 +54,8 @@ sudo apt-get install -y cmake build-essential \
   libeigen3-dev libtbb-dev libimath-dev
 ```
 
-Configure and compile the library:
+Configure and compile the library, running these (and the commands below) from
+the repository root:
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
