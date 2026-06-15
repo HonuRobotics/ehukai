@@ -84,38 +84,29 @@ target_link_libraries(your_target PRIVATE EncinoWaves::EncinoWaves)
 
 ## Style and static analysis
 
-The repo ships a `.clang-tidy` and a `CPPLINT.cfg`, so the checkers run with the
-project's policy out of the box. The gate covers the files this fork authors —
-the FFT shim (`include/EncinoWaves/FftwWrapper.h`) and the tests; the vendored
-upstream EncinoWaves headers are out of scope.
+The repo ships `.clang-tidy`, `CPPLINT.cfg`, and `.cppcheck-suppressions`, so the
+checkers run with the project's policy out of the box. The gate covers the files
+this fork authors — the FFT shim (`include/EncinoWaves/FftwWrapper.h`) and the
+tests; the vendored upstream EncinoWaves headers are out of scope.
 
 Install the tools:
 
 ```sh
 sudo apt-get install -y cppcheck clang-tidy pipx
-pipx install cpplint
 ```
 
-Run them from the repo root:
+**cppcheck** and **cpplint** run via the pre-commit hook (below), so there is no
+separate command to keep in sync with the config. **clang-tidy** is heavier — it
+needs a compile database and is too slow for a hook — so run it manually or in
+CI, from the repo root:
 
 ```sh
-# cppcheck — scope to the shim. The .h needs --language=c++, and the integration
-# tests pull in the upstream headers, so run cppcheck on the shim-only files.
-cppcheck --enable=warning,style,performance,portability --std=c++17 \
-  --language=c++ --suppress=missingIncludeSystem -I include \
-  include/EncinoWaves/FftwWrapper.h test/test_FftwWrapper.cc
-
-# clang-tidy — needs a compile database; reads .clang-tidy
 cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 clang-tidy -p build test/test_FftwWrapper.cc test/test_headers.cc \
   test/test_Propagation.cc
-
-# cpplint — reads CPPLINT.cfg
-cpplint include/EncinoWaves/FftwWrapper.h test/test_FftwWrapper.cc \
-  test/test_headers.cc test/test_Propagation.cc
 ```
 
-All three are clean on the fork's sources.
+It reads `.clang-tidy` and fails on any finding.
 
 ### Pre-commit hook
 
