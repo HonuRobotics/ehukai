@@ -63,8 +63,6 @@
 #include <tbb/blocked_range.h>
 #include <tbb/blocked_range2d.h>
 
-#include <boost/format.hpp>
-
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -98,7 +96,7 @@ struct singular_value_type;
 SINGULAR_VALUE_TYPE(float, float);
 SINGULAR_VALUE_TYPE(double, double);
 SINGULAR_VALUE_TYPE(std::complex<float>, float);
-SINGULAR_VALUE_TYPE(std::complex<double>, float);
+SINGULAR_VALUE_TYPE(std::complex<double>, double);
 SINGULAR_VALUE_TYPE(Imath::Vec2<float>, float);
 SINGULAR_VALUE_TYPE(Imath::Vec2<double>, double);
 SINGULAR_VALUE_TYPE(Imath::Vec3<float>, float);

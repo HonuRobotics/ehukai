@@ -183,11 +183,11 @@ struct Stats {
             ParallelStdDev<T>( MeanMinE,
                                i_waves.MinE.cdata(), i_waves.MinE.size() );
 
-        std::cout <<
-                  ( boost::format( "Height (min, max, mean): (%f, %f, %f)" )
-                    % MinHeight % MaxHeight % MeanHeight ) << std::endl <<
-                  ( boost::format( "MinE (mean, stddev): (%f, %f)" )
-                    % MeanMinE % StdDevMinE ) << std::endl;
+        std::cout << "Height (min, max, mean): ("
+                  << MinHeight << ", " << MaxHeight << ", " << MeanHeight
+                  << ")" << std::endl
+                  << "MinE (mean, stddev): ("
+                  << MeanMinE << ", " << StdDevMinE << ")" << std::endl;
     }
 #endif
 
@@ -199,12 +199,6 @@ struct Stats {
 
     MeanMinE   = ParallelMean<T>(MinE.cdata(), MinE.size());
     StdDevMinE = ParallelStdDev<T>(MeanMinE, MinE.cdata(), MinE.size());
-
-    // std::cout <<
-    //          ( boost::format( "Height (min, max, mean): (%f, %f, %f)" )
-    //            % MinHeight % MaxHeight % MeanHeight ) << std::endl <<
-    //          ( boost::format( "MinE (mean, stddev): (%f, %f)" )
-    //            % MeanMinE % StdDevMinE ) << std::endl;
   }
 };
 
