@@ -113,13 +113,6 @@ Two environment notes the CI bakes in, needed for the **thread** job:
   (`FATAL: unexpected memory mapping`). Run the tests under `setarch -R` (no root)
   to disable per-process randomization.
 
-> **Regression guard.** `test_FftwWrapper`'s concurrent shared-plan execute test
-> drives one FFT plan from several threads at once — the pattern FFTW documents
-> as thread-safe. An earlier design cached per-plan scratch, which made a shared
-> plan race; review caught it and the shim now allocates that scratch per call
-> (`FftwWrapper.h`). These jobs are green, and guard the fix: re-introducing
-> shared plan state would race and turn TSan (and ASan) red again.
-
 Consume it from another CMake project:
 
 ```cmake
