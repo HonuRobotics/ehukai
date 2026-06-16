@@ -30,11 +30,11 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ matrix.image }}
-      # LeakSanitizer ptraces its own process at exit; the default container
-      # lacks that capability and LSan would fatal-error on every test. (The
-      # default seccomp profile already permits the personality() call that
-      # setarch -R needs for the TSan ASLR workaround, so no seccomp change.)
-      options: --cap-add=SYS_PTRACE
+      # LeakSanitizer ptraces its own process at exit, so the container needs
+      # SYS_PTRACE. setarch -R (the TSan ASLR workaround) issues
+      # personality(ADDR_NO_RANDOMIZE), which the default seccomp profile blocks
+      # ("setarch: Operation not permitted"), so run with seccomp unconfined.
+      options: --cap-add=SYS_PTRACE --security-opt seccomp=unconfined
     timeout-minutes: 30
     strategy:
       fail-fast: false
