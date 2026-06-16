@@ -84,10 +84,10 @@ target_link_libraries(your_target PRIVATE EncinoWaves::EncinoWaves)
 
 ## Style and static analysis
 
-The repo ships `.clang-tidy`, `CPPLINT.cfg`, and `.cppcheck-suppressions`, so the
-checkers run with the project's policy out of the box. The gate covers the files
-this fork authors — the FFT shim (`include/EncinoWaves/FftwWrapper.h`) and the
-tests; the vendored upstream EncinoWaves headers are out of scope.
+The repo ships a `.clang-tidy` and a `CPPLINT.cfg`, so the checkers run with the
+project's policy out of the box. The gate covers the files this fork authors —
+the FFT shim (`include/EncinoWaves/FftwWrapper.h`) and the tests; the vendored
+upstream EncinoWaves headers are out of scope.
 
 Install the tools:
 
