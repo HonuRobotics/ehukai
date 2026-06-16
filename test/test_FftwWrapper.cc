@@ -690,8 +690,9 @@ int RunForType(const char *typeName)
     auto driver = [&](int t)
     {
       arrived.fetch_add(1, std::memory_order_acq_rel);
+      // all drivers start their first execute() together (a release barrier)
       while (!go.load(std::memory_order_acquire))
-        std::this_thread::yield();  // all drivers start their first execute together
+        std::this_thread::yield();
 
       for (int r = 0; r < kRounds; ++r)
       {
