@@ -32,6 +32,10 @@
  *      vs analytic; one plan reused across two execute() calls; and one plan
  *      driven concurrently from several threads (FFTW's thread-safety
  *      contract). 16-18 are from @j-rivero's jrivero/perf_test_no_ci branch.
+ *   19. The padded-output row stride on the parallel (multi-grain) grid.
+ *   20. plan_with_nthreads actually bounds TBB concurrency (observable cap).
+ *   21. The per-thread FFT cache stays correct across a changing transform
+ *      length (alternating N on the shared worker pool).
  *
  * The float and double specializations are exercised independently.
  */
@@ -47,6 +51,8 @@
 #include <random>
 #include <thread>
 #include <vector>
+
+#include <tbb/global_control.h>
 
 namespace
 {
@@ -622,22 +628,32 @@ int RunForType(const char *typeName)
   // FFTW documents execute_dft_c2r as safe to call concurrently on one plan
   // with different in/out arrays (the plan stays read-only). Drive ONE shared
   // plan from several threads, each inverting its own sinusoid; every thread
-  // must read back only its own analytic field. Guards the per-call scratch —
+  // must read back only its own field. Guards the per-call scratch —
   // re-introducing shared plan-owned scratch would corrupt cells here. N=64
   // also splits each execute across TBB grains, so this hits parallelism
   // (within an execute) and concurrency (across executes) at once.
+  //
+  // Hardened over the original: (a) a start barrier so every driver enters its
+  // first execute together, maximizing the overlap window a race needs; (b) the
+  // thread count scales with the hardware; (c) each result is compared
+  // bit-exact against a serially-computed golden for that thread's spectrum
+  // (Test 16 pins serial == parallel), catching any deviation regardless of
+  // magnitude — the old per-thread tolerance could mask a same-magnitude
+  // cross-thread swap.
   Check("concurrent shared-plan execute → each thread stays correct "
         "(parallelism + concurrency)", failures, [&]() {
     constexpr int N = 64;
-    constexpr int kThreads = 4;
+    const int hw = static_cast<int>(std::thread::hardware_concurrency());
+    const int kThreads = std::max(4, hw);
     constexpr int kRounds = 100;
     const int nHalf = (N / 2) + 1;
     const T scale = T(N) * T(N);
 
-    // Per-thread distinct spectra + outputs. Thread t's amplitude is (t+1)×, so
-    // a cell leaking from thread t' shows up as the wrong magnitude.
+    // Per-thread distinct spectra. Thread t's amplitude is (t+1)×, so a cell
+    // leaking from thread t' shows up as the wrong value.
     std::vector<std::vector<Complex>> specs(kThreads);
     std::vector<std::vector<T>> outs(kThreads);
+    std::vector<std::vector<T>> goldens(kThreads);
     for (int t = 0; t < kThreads; ++t)
     {
       specs[t].assign(static_cast<std::size_t>(N) * nHalf, Complex(0, 0));
@@ -651,25 +667,34 @@ int RunForType(const char *typeName)
     // One plan, deliberately shared across all driver threads.
     auto plan = FFT::plan_dft_c2r_2d(N, N, specs[0].data(), outs[0].data(), 0u);
 
+    // Serial golden per thread — the reference each concurrent result must
+    // equal bit-for-bit. Computed before the concurrent phase, single-threaded.
+    FFT::plan_with_nthreads(1);
+    for (int t = 0; t < kThreads; ++t)
+    {
+      goldens[t].assign(static_cast<std::size_t>(N) * N, T(0));
+      FFT::execute_dft_c2r(plan, specs[t].data(), goldens[t].data());
+    }
+    FFT::plan_with_nthreads(0);  // restore parallel for the concurrent phase
+
     std::atomic<int> badCells{0};
+    std::atomic<int> arrived{0};
+    std::atomic<bool> go{false};
     auto driver = [&](int t)
     {
-      const T tol = static_cast<T>(t + 1) * scale * static_cast<T>(1e-3);
+      arrived.fetch_add(1, std::memory_order_acq_rel);
+      while (!go.load(std::memory_order_acquire))
+        std::this_thread::yield();  // all drivers start their first execute together
+
       for (int r = 0; r < kRounds; ++r)
       {
         std::fill(outs[t].begin(), outs[t].end(), T(-999));  // poison
         FFT::execute_dft_c2r(plan, specs[t].data(), outs[t].data());
-        for (int i = 0; i < N; ++i)
+        for (std::size_t k = 0; k < outs[t].size(); ++k)
         {
-          for (int j = 0; j < N; ++j)
-          {
-            const T expected = static_cast<T>(t + 1) * scale *
-                (static_cast<T>(std::cos(2.0 * M_PI * i / N)) +
-                 static_cast<T>(std::cos(2.0 * M_PI * j / N)));
-            const T v = OutAt<T>(outs[t], N, N, i, j);
-            if (!std::isfinite(v) || std::abs(v - expected) > tol)
-              badCells.fetch_add(1, std::memory_order_relaxed);
-          }
+          const T v = outs[t][k];
+          if (!std::isfinite(v) || v != goldens[t][k])
+            badCells.fetch_add(1, std::memory_order_relaxed);
         }
       }
     };
@@ -678,6 +703,9 @@ int RunForType(const char *typeName)
     pool.reserve(kThreads);
     for (int t = 0; t < kThreads; ++t)
       pool.emplace_back(driver, t);
+    while (arrived.load(std::memory_order_acquire) < kThreads)
+      std::this_thread::yield();
+    go.store(true, std::memory_order_release);  // release the barrier
     for (auto &th : pool)
       th.join();
 
@@ -690,6 +718,153 @@ int RunForType(const char *typeName)
                 << " threads x " << kRounds
                 << " rounds — concurrent shared-plan executes raced) ";
       return false;
+    }
+    return true;
+  });
+
+  // --- Test 19: padded output on the parallel grid (stride preserved) ------
+  // The padded plan writes each row at out + i*outputRowStride, with
+  // outputRowStride = fast + widthPad. Test 5 covers padding only on an 8x8 DC
+  // field — one TBB grain and position-independent, so a row/stride mis-map
+  // would go unseen. Here a 128x128 sinusoid (energy on BOTH axes, so every
+  // cell is position-dependent) splits across many grains and is written
+  // through a non-trivial pad: a stride bug or a cross-grain race on padded
+  // rows corrupts the valid region or leaks into the pad.
+  Check("128x128 sinusoid, padded output → parallel stride preserved",
+        failures, [&]() {
+    constexpr int N = 128;
+    constexpr int widthPad = 3;  // non-trivial, odd → row stride 131
+    const int nHalf = (N / 2) + 1;
+    const int stride = N + widthPad;
+    std::vector<Complex> spec19(static_cast<std::size_t>(N) * nHalf,
+                                Complex(0, 0));
+    std::vector<T> out19(static_cast<std::size_t>(N) * stride, T(-777));
+    const T amp = T(N) * T(N) * T(0.5);
+    At<T>(spec19, N, N, 1, 0) = Complex(amp, 0);
+    At<T>(spec19, N, N, N - 1, 0) = Complex(amp, 0);
+    At<T>(spec19, N, N, 0, 1) = Complex(amp, 0);
+
+    FFT::plan_with_nthreads(0);  // default = parallel over all cores
+    auto plan = FFT::plan_guru_dft_c2r_output_padded(
+        N, N, widthPad, 0 /*heightPad*/, spec19.data(), out19.data(), 0u);
+    FFT::execute(plan);
+    FFT::destroy_plan(plan);
+
+    const T scale = T(N) * T(N);
+    const T tol = scale * static_cast<T>(1e-4);
+    for (int i = 0; i < N; ++i)
+    {
+      // valid columns 0..N-1, indexed through the padded row stride
+      for (int j = 0; j < N; ++j)
+      {
+        const T expected = scale *
+            (static_cast<T>(std::cos(2.0 * M_PI * i / N)) +
+             static_cast<T>(std::cos(2.0 * M_PI * j / N)));
+        const T v = out19[static_cast<std::size_t>(i) * stride + j];
+        if (!std::isfinite(v) || std::abs(v - expected) > tol)
+        {
+          std::cout << "(valid mismatch at (" << i << "," << j << "), got "
+                    << v << " want " << expected << ") ";
+          return false;
+        }
+      }
+      // pad columns N..stride-1 must stay the poison value
+      for (int j = N; j < stride; ++j)
+      {
+        if (out19[static_cast<std::size_t>(i) * stride + j] != T(-777))
+        {
+          std::cout << "(pad col written at (" << i << "," << j << ")) ";
+          return false;
+        }
+      }
+    }
+    return true;
+  });
+
+  // --- Test 20: plan_with_nthreads actually bounds TBB concurrency ---------
+  // Tests 8/16 call plan_with_nthreads but never check the cap took effect —
+  // correctness is independent of thread count, so a silently-broken
+  // global_control would still pass them (and would silently turn Test 16's
+  // serial-vs-parallel leg into parallel-vs-parallel). Assert the cap is
+  // observable through TBB's own active_value and that 0 restores the default.
+  Check("plan_with_nthreads bounds observed concurrency", failures, [&]() {
+    using GC = tbb::global_control;
+    FFT::plan_with_nthreads(0);  // clear any cap left by a prior test
+    const std::size_t defaultLimit =
+        GC::active_value(GC::max_allowed_parallelism);
+
+    FFT::plan_with_nthreads(2);
+    const std::size_t capped = GC::active_value(GC::max_allowed_parallelism);
+
+    FFT::plan_with_nthreads(0);
+    const std::size_t restored =
+        GC::active_value(GC::max_allowed_parallelism);
+
+    if (capped != 2)
+    {
+      std::cout << "(cap not applied: active_value = " << capped
+                << ", expected 2) ";
+      return false;
+    }
+    if (restored != defaultLimit)
+    {
+      std::cout << "(cap not lifted: active_value = " << restored
+                << ", expected default " << defaultLimit << ") ";
+      return false;
+    }
+    return true;
+  });
+
+  // --- Test 21: per-thread FFT cache survives a changing transform length --
+  // Each TBB worker reuses a static thread_local Eigen::FFT across calls. Its
+  // riskiest failure mode is carrying a twiddle cache sized for one N into a
+  // later transform of a different N. Every other test uses a fixed N, so this
+  // alternates N=64 and N=96 back-to-back on the parallel path (same process,
+  // same worker pool) and checks each against its analytic field — a stale
+  // length would surface as a wrong-amplitude or NaN cell.
+  Check("per-thread cache: alternating grid sizes → no stale state",
+        failures, [&]() {
+    FFT::plan_with_nthreads(0);  // default = parallel, workers shared/recycled
+    auto runSinusoid = [&](int N) -> bool
+    {
+      const int nHalf = (N / 2) + 1;
+      std::vector<Complex> spec21(static_cast<std::size_t>(N) * nHalf,
+                                  Complex(0, 0));
+      std::vector<T> out21(static_cast<std::size_t>(N) * N, T(-555));
+      const T amp = T(N) * T(N) * T(0.5);
+      At<T>(spec21, N, N, 1, 0) = Complex(amp, 0);
+      At<T>(spec21, N, N, N - 1, 0) = Complex(amp, 0);
+      At<T>(spec21, N, N, 0, 1) = Complex(amp, 0);
+
+      auto plan = FFT::plan_dft_c2r_2d(N, N, spec21.data(), out21.data(), 0u);
+      FFT::execute(plan);
+      FFT::destroy_plan(plan);
+
+      const T scale = T(N) * T(N);
+      const T tol = scale * static_cast<T>(1e-3);
+      for (int i = 0; i < N; ++i)
+      {
+        for (int j = 0; j < N; ++j)
+        {
+          const T expected = scale *
+              (static_cast<T>(std::cos(2.0 * M_PI * i / N)) +
+               static_cast<T>(std::cos(2.0 * M_PI * j / N)));
+          const T v = OutAt<T>(out21, N, N, i, j);
+          if (!std::isfinite(v) || std::abs(v - expected) > tol)
+          {
+            std::cout << "(N=" << N << " mismatch at (" << i << "," << j
+                      << "), got " << v << " want " << expected << ") ";
+            return false;
+          }
+        }
+      }
+      return true;
+    };
+
+    for (int iter = 0; iter < 10; ++iter)
+    {
+      if (!runSinusoid(64)) return false;  // length A
+      if (!runSinusoid(96)) return false;  // length B → forces a re-plan
     }
     return true;
   });
