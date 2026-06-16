@@ -645,7 +645,14 @@ int RunForType(const char *typeName)
     constexpr int N = 64;
     const int hw = static_cast<int>(std::thread::hardware_concurrency());
     const int kThreads = std::max(4, hw);
+    // Many rounds give the nondeterministic corruption a chance to show in a
+    // plain build; under a sanitizer the race is caught on the first concurrent
+    // access, so a few rounds keep the (heavily instrumented) CI job fast.
+#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+    constexpr int kRounds = 3;
+#else
     constexpr int kRounds = 100;
+#endif
     const int nHalf = (N / 2) + 1;
     const T scale = T(N) * T(N);
 
