@@ -1,0 +1,217 @@
+/*
+ * Copyright (C) 2026 Honu Robotics
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Eigen::FFT-backed implementation of the FftwWrapperT 2D complex-to-real
+ * inverse-FFT interface used by EncinoWaves.
+ */
+
+#ifndef ENCINOWAVES_FFTWWRAPPER_H
+#define ENCINOWAVES_FFTWWRAPPER_H
+
+#include <cassert>
+#include <cmath>
+#include <complex>
+#include <cstdlib>
+#include <type_traits>
+#include <vector>
+
+#include <Eigen/Core>
+#include <unsupported/Eigen/FFT>
+
+// Plan-flag values, kept so call sites compile; ignored here.
+#ifndef FFTW_ESTIMATE
+#define FFTW_ESTIMATE (1U << 6)
+#endif
+#ifndef FFTW_DESTROY_INPUT
+#define FFTW_DESTROY_INPUT (1U << 0)
+#endif
+#ifndef FFTW_MEASURE
+#define FFTW_MEASURE 0U
+#endif
+#ifndef FFTW_PATIENT
+#define FFTW_PATIENT (1U << 5)
+#endif
+#ifndef FFTW_EXHAUSTIVE
+#define FFTW_EXHAUSTIVE (1U << 3)
+#endif
+#ifndef FFTW_PRESERVE_INPUT
+#define FFTW_PRESERVE_INPUT (1U << 4)
+#endif
+
+namespace EncinoWaves
+{
+
+namespace detail
+{
+  template <typename T>
+  struct Plan
+  {
+    int width{0};
+    int height{0};
+    int outputRowStride{0};
+    std::complex<T> *defaultIn{nullptr};
+    T *defaultOut{nullptr};
+  };
+
+  // 2D complex-to-real inverse FFT.
+  // Input:  slow x (fast/2+1) complex, row-major, hermitian along fast.
+  // Output: slow x fast real, row-major; row r at out[r * outputRowStride].
+  // `fast` (the inner/hermitian dim) must be even: the KissFFT-backed real
+  // inverse yields 2*(halfFast-1) reals, which equals `fast` only when `fast`
+  // is even. Odd `fast` is rejected by the guard below rather than overrunning
+  // the copy-out.
+  template <typename T>
+  inline void Execute2dC2r(int slow, int fast, int outputRowStride,
+                           const std::complex<T> *in, T *out)
+  {
+    using Complex = std::complex<T>;
+    using VecC = Eigen::Matrix<Complex, Eigen::Dynamic, 1>;
+    using VecR = Eigen::Matrix<T, Eigen::Dynamic, 1>;
+
+    const int halfFast = (fast / 2) + 1;
+    if (slow <= 0 || fast <= 0 || halfFast <= 0 || (fast % 2) != 0 ||
+        in == nullptr || out == nullptr)
+      return;
+
+    // Unscaled = unnormalized inverse (no 1/N); HalfSpectrum = N/2+1
+    // hermitian-packed input producing N real outputs.
+    Eigen::FFT<T> fftC2C;
+    fftC2C.SetFlag(Eigen::FFT<T>::Unscaled);
+    Eigen::FFT<T> fftC2R;
+    fftC2R.SetFlag(Eigen::FFT<T>::Unscaled);
+    fftC2R.SetFlag(Eigen::FFT<T>::HalfSpectrum);
+
+    // Pass 1: column pass (complex-to-complex of length slow).
+    const std::size_t cells = static_cast<std::size_t>(slow) * halfFast;
+    std::vector<Complex> intermediate(cells);
+
+    VecC colIn(slow);
+    VecC colOut(slow);
+    for (int j = 0; j < halfFast; ++j)
+    {
+      for (int i = 0; i < slow; ++i)
+        colIn(i) = in[static_cast<std::size_t>(i) * halfFast + j];
+      fftC2C.inv(colOut, colIn);
+      for (int i = 0; i < slow; ++i)
+        intermediate[static_cast<std::size_t>(i) * halfFast + j] = colOut(i);
+    }
+
+    // Pass 2: row pass (hermitian-to-real of length fast).
+    VecC rowIn(halfFast);
+    VecR rowOut(fast);
+    for (int i = 0; i < slow; ++i)
+    {
+      for (int j = 0; j < halfFast; ++j)
+        rowIn(j) = intermediate[static_cast<std::size_t>(i) * halfFast + j];
+      fftC2R.inv(rowOut, rowIn);
+      T *outRow = out + static_cast<std::size_t>(i) * outputRowStride;
+      for (int j = 0; j < fast; ++j)
+        outRow[j] = rowOut(j);
+    }
+  }
+}  // namespace detail
+
+//-----------------------------------------------------------------------------
+// FftwWrapperT — FFTW-shaped facade over the Eigen::FFT inverse transform.
+// A single primary template serves both supported precisions: the bodies are
+// identical in T, so there is nothing to specialize. (Upstream needed two
+// explicit specializations only because FFTW exposed separate fftwf_* / fftw_*
+// C symbols.)
+//-----------------------------------------------------------------------------
+template <typename T>
+struct FftwWrapperT
+{
+  static_assert(std::is_floating_point_v<T>,
+                "FftwWrapperT supports only float and double");
+
+  using real_type = T;
+  using complex_type = std::complex<T>;
+  using plan_type = detail::Plan<T> *;
+
+  static int init_threads() { return 1; }
+  static void plan_with_nthreads(int /*i_nthreads*/) {}
+
+  // i_width is the slow (outer) dim; i_height is the fast (inner) dim.
+  static plan_type plan_dft_c2r_2d(int i_width, int i_height,
+                                   complex_type *i_in, real_type *o_out,
+                                   unsigned int /*i_flags*/)
+  {
+    auto *p = new detail::Plan<T>();
+    p->width = i_width;
+    p->height = i_height;
+    p->outputRowStride = i_height;
+    p->defaultIn = i_in;
+    p->defaultOut = o_out;
+    return p;
+  }
+
+  // Guru variant. EncinoWaves uses square grids, so this forwards to the plain
+  // 2D plan; for a non-square input the upstream FFTW guru path halved the last
+  // (width) dim, so the two would diverge.
+  static plan_type plan_guru_dft_c2r(int i_width, int i_height,
+                                     complex_type *i_in, real_type *o_out,
+                                     unsigned int i_flags)
+  {
+    return plan_dft_c2r_2d(i_width, i_height, i_in, o_out, i_flags);
+  }
+
+  static plan_type plan_guru_dft_c2r_output_padded(
+      int i_width, int i_height, int i_widthPad, int /*i_heightPad*/,
+      complex_type *i_in, real_type *o_out, unsigned int /*i_flags*/)
+  {
+    auto *p = new detail::Plan<T>();
+    p->width = i_width;
+    p->height = i_height;
+    p->outputRowStride = i_height + i_widthPad;
+    p->defaultIn = i_in;
+    p->defaultOut = o_out;
+    return p;
+  }
+
+  static void *Malloc(std::size_t i_size) { return std::malloc(i_size); }
+  static void Free(void *i_data) { std::free(i_data); }
+
+  static void execute(plan_type i_plan)
+  {
+    if (!i_plan) return;
+    detail::Execute2dC2r<T>(i_plan->width, i_plan->height,
+                            i_plan->outputRowStride,
+                            i_plan->defaultIn, i_plan->defaultOut);
+  }
+
+  static void execute_dft_c2r(const detail::Plan<T> *i_plan,
+                              complex_type *i_in, real_type *o_out)
+  {
+    if (!i_plan) return;
+    detail::Execute2dC2r<T>(i_plan->width, i_plan->height,
+                            i_plan->outputRowStride, i_in, o_out);
+  }
+
+  static void destroy_plan(plan_type i_plan) { delete i_plan; }
+  static void cleanup_threads() {}
+  static void cleanup() {}
+};
+
+//-----------------------------------------------------------------------------
+// GLOBAL THREAD INIT HELPER
+//-----------------------------------------------------------------------------
+// No global FFT thread state to initialize; retained as a no-op hook so the
+// per-call sites need no change.
+template <typename T>
+inline void FftwInitThreadsT() {}
+
+}  // namespace EncinoWaves
+
+#endif  // ENCINOWAVES_FFTWWRAPPER_H
