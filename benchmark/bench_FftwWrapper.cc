@@ -15,12 +15,14 @@
  *
  * Microbenchmark for the Eigen + TBB FftwWrapper 2D complex-to-real inverse
  * FFT. Each grid size is run both serial (1 worker) and parallel (all cores),
- * driven through plan_with_nthreads so the comparison exercises the public API
- * and the per-plan cached scratch.
+ * driven through plan_with_nthreads so the comparison exercises the public API.
+ * Scratch is allocated per call; the Eigen::FFT twiddle cache is per-thread.
  */
 
 #include "EncinoWaves/FftwWrapper.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <complex>
 #include <vector>
@@ -48,12 +50,30 @@ namespace
     FFT::plan_with_nthreads(nthreads);
     auto plan = FFT::plan_dft_c2r_2d(n, n, spec.data(), out.data(), 0u);
 
+    // Correctness oracle: a no-op'd or garbage transform must not pass as a
+    // fast result. Compute a serial golden once, then require the timed loop's
+    // output to match it (Test 16 pins serial == parallel bit-exact).
+    std::vector<T> golden(out.size(), T(0));
+    FFT::plan_with_nthreads(1);
+    FFT::execute_dft_c2r(plan, spec.data(), golden.data());
+    FFT::plan_with_nthreads(nthreads);
+
     for (auto _ : state)
     {
-      FFT::execute(plan);  // reuses the plan's cached scratch each iteration
+      FFT::execute(plan);  // scratch is per-call; the twiddle cache is per-thread
       benchmark::DoNotOptimize(out.data());
       benchmark::ClobberMemory();
     }
+
+    double maxRel = 0.0;
+    for (std::size_t k = 0; k < out.size(); ++k)
+    {
+      const double g = static_cast<double>(golden[k]);
+      const double d = std::abs(static_cast<double>(out[k]) - g);
+      maxRel = std::max(maxRel, d / (std::abs(g) + 1.0));
+    }
+    if (!(maxRel < 1e-3))
+      state.SkipWithError("inverse FFT output diverged from the serial golden");
 
     FFT::destroy_plan(plan);
     FFT::plan_with_nthreads(0);  // restore the default for the next case
@@ -65,6 +85,13 @@ namespace
 }  // namespace
 
 BENCHMARK(BM_InverseFFT2d<float>)
+    ->Args({64, 1})->Args({64, 0})
+    ->Args({128, 1})->Args({128, 0})
+    ->Args({256, 1})->Args({256, 0})
+    ->Args({512, 1})->Args({512, 0})
+    ->Unit(benchmark::kMicrosecond);
+
+BENCHMARK(BM_InverseFFT2d<double>)
     ->Args({64, 1})->Args({64, 0})
     ->Args({128, 1})->Args({128, 0})
     ->Args({256, 1})->Args({256, 0})
