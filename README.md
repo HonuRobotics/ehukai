@@ -121,6 +121,68 @@ target_link_libraries(your_target PRIVATE EncinoWaves::EncinoWaves)
 ```
 
 
+## Style and static analysis
+
+The repo ships a `.clang-tidy` and a `CPPLINT.cfg`, so the checkers run with the
+project's policy out of the box. The gate covers the files this fork authors —
+the FFT shim (`include/EncinoWaves/FftwWrapper.h`) and the tests; the vendored
+upstream EncinoWaves headers are out of scope.
+
+Install the tools:
+
+```sh
+sudo apt-get install -y cppcheck clang-tidy pipx
+```
+
+**cppcheck** and **cpplint** run via the pre-commit hook (below), so there is no
+separate command to keep in sync with the config. **clang-tidy** is heavier — it
+needs a compile database and is too slow for a hook — so run it manually or in
+CI, from the repo root:
+
+```sh
+cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+clang-tidy --quiet -p build test/test_FftwWrapper.cc test/test_headers.cc \
+  test/test_Propagation.cc
+```
+
+It reads `.clang-tidy` and fails on any finding. `--quiet` drops the
+`Suppressed N warnings` statistics line; the remaining `N warnings generated.`
+counts are a clang frontend artifact from instantiating the vendored
+Eigen/TBB/Imath templates — those headers are `-isystem`/system includes and
+`HeaderFilterRegex` scopes reporting to `FftwWrapper.h`, so none of their
+warnings are ever reported.
+
+### Pre-commit hook
+
+cpplint and cppcheck also run automatically via
+[pre-commit](https://pre-commit.com) on the files this fork authors. clang-tidy
+is intentionally excluded — it is too slow for a hook and needs a compile
+database, so run it in CI instead. The cppcheck hook uses the system `cppcheck`
+from the install step above; cpplint is installed automatically by pre-commit
+into an isolated environment, so no system cpplint is needed for the hook.
+
+One-time setup, from the repo root:
+
+```sh
+pipx install pre-commit          # or: python3 -m pip install --user pre-commit
+pre-commit install               # install the git hook into .git/hooks
+```
+
+After that, every `git commit` runs cpplint and cppcheck on the staged shim and
+test files and blocks the commit if either reports a problem. To check the whole
+tree at once — for example right after enabling the hook:
+
+```sh
+pre-commit run --all-files
+```
+
+To commit without running the hooks (use sparingly), pass `--no-verify`:
+
+```sh
+git commit --no-verify
+```
+
+
 ### License
 
 Copyright &copy; 2015 Christopher Jon Horvath. Fork modifications &copy; Honu Robotics.
