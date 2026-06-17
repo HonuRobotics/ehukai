@@ -19,6 +19,31 @@ endif()
 # EncinoWaves/Exception.h.
 add_compile_options(-Wno-unused-function)
 
+# ---- optional sanitizer build (-DSANITIZE=address|thread|undefined) ----
+# Applied to every target (library, tests, benchmark). `address` also turns on
+# UBSan and LeakSanitizer; `-fno-sanitize-recover=all` makes UBSan findings
+# fatal so CI fails on them instead of merely logging. Used by .github/workflows
+# to produce the ASan and TSan jobs; reproduce a job locally with e.g.
+#   cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSANITIZE=address
+set(SANITIZE "" CACHE STRING
+    "Build with a sanitizer: address | thread | undefined (empty = none)")
+set_property(CACHE SANITIZE PROPERTY STRINGS "" address thread undefined)
+if(SANITIZE)
+  if(SANITIZE STREQUAL "address")
+    set(_san_flags -fsanitize=address,undefined -fno-sanitize-recover=all)
+  elseif(SANITIZE STREQUAL "thread")
+    set(_san_flags -fsanitize=thread)
+  elseif(SANITIZE STREQUAL "undefined")
+    set(_san_flags -fsanitize=undefined -fno-sanitize-recover=all)
+  else()
+    message(FATAL_ERROR
+            "SANITIZE='${SANITIZE}' is not one of: address, thread, undefined")
+  endif()
+  message(STATUS "Building with sanitizer: ${SANITIZE}")
+  add_compile_options(${_san_flags} -fno-omit-frame-pointer -g)
+  add_link_options(${_san_flags})
+endif()
+
 # Single source of truth for dependency version floors; reused on the consumer
 # side via EncinoWavesConfig.cmake.in so the two never drift.
 set(EW_EIGEN3_MIN 3.4)
@@ -81,4 +106,14 @@ if(BUILD_TESTING)
     target_link_libraries(${t} PRIVATE ${PROJECT_NAME})
     add_test(NAME ${t} COMMAND ${t})
   endforeach()
+endif()
+
+# ---- optional FFT microbenchmark (off by default; needs Google Benchmark) ----
+option(ENCINOWAVES_BUILD_BENCHMARKS
+       "Build the FFT microbenchmark (requires Google Benchmark)" OFF)
+if(ENCINOWAVES_BUILD_BENCHMARKS)
+  find_package(benchmark REQUIRED)
+  add_executable(bench_FftwWrapper benchmark/bench_FftwWrapper.cc)
+  target_link_libraries(bench_FftwWrapper
+    PRIVATE ${PROJECT_NAME} benchmark::benchmark)
 endif()

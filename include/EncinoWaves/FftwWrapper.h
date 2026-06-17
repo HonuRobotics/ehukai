@@ -24,11 +24,16 @@
 #include <cmath>
 #include <complex>
 #include <cstdlib>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
 #include <Eigen/Core>
 #include <unsupported/Eigen/FFT>
+
+#include <tbb/blocked_range.h>
+#include <tbb/global_control.h>
+#include <tbb/parallel_for.h>
 
 // Plan-flag values, kept so call sites compile; ignored here.
 #ifndef FFTW_ESTIMATE
@@ -65,6 +70,19 @@ namespace detail
     T *defaultOut{nullptr};
   };
 
+  // Process-wide TBB concurrency cap set by plan_with_nthreads (the FFTW
+  // plan_with_nthreads analog). Null means the TBB default (all cores).
+  inline std::unique_ptr<tbb::global_control> &ThreadControl()
+  {
+    static std::unique_ptr<tbb::global_control> ctrl;
+    return ctrl;
+  }
+
+  // Per-task TBB grain size: columns/rows handled by one task, which reuses a
+  // single thread-local Eigen::FFT across them. Small grids collapse to one
+  // task (no parallel overhead).
+  inline constexpr int kFftGrainSize = 8;
+
   // 2D complex-to-real inverse FFT.
   // Input:  slow x (fast/2+1) complex, row-major, hermitian along fast.
   // Output: slow x fast real, row-major; row r at out[r * outputRowStride].
@@ -72,6 +90,9 @@ namespace detail
   // inverse yields 2*(halfFast-1) reals, which equals `fast` only when `fast`
   // is even. Odd `fast` is rejected by the guard below rather than overrunning
   // the copy-out.
+  // The column-pass scratch is a per-call local, so one plan may be executed
+  // concurrently with different in/out buffers — matching FFTW's documented
+  // thread-safety contract that SpectralSpatialField relies on.
   template <typename T>
   inline void Execute2dC2r(int slow, int fast, int outputRowStride,
                            const std::complex<T> *in, T *out)
@@ -85,41 +106,61 @@ namespace detail
         in == nullptr || out == nullptr)
       return;
 
-    // Unscaled = unnormalized inverse (no 1/N); HalfSpectrum = N/2+1
-    // hermitian-packed input producing N real outputs.
-    Eigen::FFT<T> fftC2C;
-    fftC2C.SetFlag(Eigen::FFT<T>::Unscaled);
-    Eigen::FFT<T> fftC2R;
-    fftC2R.SetFlag(Eigen::FFT<T>::Unscaled);
-    fftC2R.SetFlag(Eigen::FFT<T>::HalfSpectrum);
+    // Per-call column-pass scratch — never shared, so concurrent executions of
+    // the same plan do not race on it.
+    std::vector<Complex> scratch(static_cast<std::size_t>(slow) * halfFast);
+    Complex *intermediate = scratch.data();
 
-    // Pass 1: column pass (complex-to-complex of length slow).
-    const std::size_t cells = static_cast<std::size_t>(slow) * halfFast;
-    std::vector<Complex> intermediate(cells);
+    // Pass 1: column pass (complex-to-complex of length slow), parallel over
+    // the independent columns. The Eigen::FFT is thread-local and persists
+    // across calls, so its KissFFT twiddle cache is reused frame to frame; a
+    // worker only ever touches its own, never concurrently. Unscaled =
+    // unnormalized inverse (no 1/N).
+    const tbb::blocked_range<int> colRange(0, halfFast, kFftGrainSize);
+    tbb::parallel_for(colRange,
+        [&](const tbb::blocked_range<int> &range)
+        {
+          static thread_local Eigen::FFT<T> fft;
+          fft.SetFlag(Eigen::FFT<T>::Unscaled);
+          VecC colIn(slow);
+          VecC colOut(slow);
+          for (int j = range.begin(); j != range.end(); ++j)
+          {
+            for (int i = 0; i < slow; ++i)
+              colIn(i) = in[static_cast<std::size_t>(i) * halfFast + j];
+            fft.inv(colOut, colIn);
+            for (int i = 0; i < slow; ++i)
+            {
+              const auto idx = static_cast<std::size_t>(i) * halfFast + j;
+              intermediate[idx] = colOut(i);
+            }
+          }
+        });
 
-    VecC colIn(slow);
-    VecC colOut(slow);
-    for (int j = 0; j < halfFast; ++j)
-    {
-      for (int i = 0; i < slow; ++i)
-        colIn(i) = in[static_cast<std::size_t>(i) * halfFast + j];
-      fftC2C.inv(colOut, colIn);
-      for (int i = 0; i < slow; ++i)
-        intermediate[static_cast<std::size_t>(i) * halfFast + j] = colOut(i);
-    }
-
-    // Pass 2: row pass (hermitian-to-real of length fast).
-    VecC rowIn(halfFast);
-    VecR rowOut(fast);
-    for (int i = 0; i < slow; ++i)
-    {
-      for (int j = 0; j < halfFast; ++j)
-        rowIn(j) = intermediate[static_cast<std::size_t>(i) * halfFast + j];
-      fftC2R.inv(rowOut, rowIn);
-      T *outRow = out + static_cast<std::size_t>(i) * outputRowStride;
-      for (int j = 0; j < fast; ++j)
-        outRow[j] = rowOut(j);
-    }
+    // Pass 2: row pass (hermitian-to-real of length fast), parallel over the
+    // independent rows. HalfSpectrum = N/2+1 hermitian-packed input, N reals.
+    const tbb::blocked_range<int> rowRange(0, slow, kFftGrainSize);
+    tbb::parallel_for(rowRange,
+        [&](const tbb::blocked_range<int> &range)
+        {
+          static thread_local Eigen::FFT<T> fft;
+          fft.SetFlag(Eigen::FFT<T>::Unscaled);
+          fft.SetFlag(Eigen::FFT<T>::HalfSpectrum);
+          VecC rowIn(halfFast);
+          VecR rowOut(fast);
+          for (int i = range.begin(); i != range.end(); ++i)
+          {
+            for (int j = 0; j < halfFast; ++j)
+            {
+              const auto idx = static_cast<std::size_t>(i) * halfFast + j;
+              rowIn(j) = intermediate[idx];
+            }
+            fft.inv(rowOut, rowIn);
+            T *outRow = out + static_cast<std::size_t>(i) * outputRowStride;
+            for (int j = 0; j < fast; ++j)
+              outRow[j] = rowOut(j);
+          }
+        });
   }
 }  // namespace detail
 
@@ -141,7 +182,20 @@ struct FftwWrapperT
   using plan_type = detail::Plan<T> *;
 
   static int init_threads() { return 1; }
-  static void plan_with_nthreads(int /*i_nthreads*/) {}
+
+  // Bound TBB's worker concurrency for subsequent execute() calls, mirroring
+  // FFTW's plan_with_nthreads. n <= 0 restores the TBB default (all cores).
+  static void plan_with_nthreads(int i_nthreads)
+  {
+    if (i_nthreads <= 0)
+    {
+      detail::ThreadControl().reset();  // restore the TBB default
+      return;
+    }
+    const auto field = tbb::global_control::max_allowed_parallelism;
+    const auto n = static_cast<std::size_t>(i_nthreads);
+    detail::ThreadControl() = std::make_unique<tbb::global_control>(field, n);
+  }
 
   // i_width is the slow (outer) dim; i_height is the fast (inner) dim.
   static plan_type plan_dft_c2r_2d(int i_width, int i_height,

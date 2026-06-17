@@ -68,11 +68,50 @@ Run the headless smoke tests:
 ctest --test-dir build --output-on-failure
 ```
 
+Optionally build and run the FFT microbenchmark (serial vs. parallel inverse FFT
+at several grid sizes). It needs **Google Benchmark** and is off by default:
+
+```sh
+sudo apt-get install -y libbenchmark-dev
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENCINOWAVES_BUILD_BENCHMARKS=ON
+cmake --build build -j
+./build/bench_FftwWrapper
+```
+
 Install (optional — headers, shared library, and the `EncinoWaves` CMake config):
 
 ```sh
 sudo cmake --install build
 ```
+
+
+## Continuous integration
+
+`.github/workflows/ci.yml` builds the library and runs the headless smoke tests
+under two sanitizers on **Ubuntu Noble (24.04)** and **Resolute (26.04)**:
+
+| Job       | Flags                          | Catches                                  |
+| --------- | ------------------------------ | ---------------------------------------- |
+| `address` | `-fsanitize=address,undefined` | heap/stack errors, leaks, undefined behaviour |
+| `thread`  | `-fsanitize=thread`            | data races                               |
+
+Pick a sanitizer at configure time with `-DSANITIZE=address|thread` and reproduce
+either job locally:
+
+```sh
+cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSANITIZE=address
+cmake --build build-asan -j
+ctest --test-dir build-asan --output-on-failure
+```
+
+Two environment notes the CI bakes in, needed for the **thread** job:
+
+- The system `libtbb` is not TSan-instrumented, so TBB's work-stealing scheduler
+  trips benign races. `test/tsan.supp` (`TSAN_OPTIONS=suppressions=...`) silences
+  only those; real findings are untouched.
+- GCC's libtsan shadow layout collides with high-entropy ASLR
+  (`FATAL: unexpected memory mapping`). Run the tests under `setarch -R` (no root)
+  to disable per-process randomization.
 
 Consume it from another CMake project:
 
