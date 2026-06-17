@@ -102,11 +102,16 @@ CI, from the repo root:
 
 ```sh
 cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-clang-tidy -p build test/test_FftwWrapper.cc test/test_headers.cc \
+clang-tidy --quiet -p build test/test_FftwWrapper.cc test/test_headers.cc \
   test/test_Propagation.cc
 ```
 
-It reads `.clang-tidy` and fails on any finding.
+It reads `.clang-tidy` and fails on any finding. `--quiet` drops the
+`Suppressed N warnings` statistics line; the remaining `N warnings generated.`
+counts are a clang frontend artifact from instantiating the vendored
+Eigen/TBB/Imath templates — those headers are `-isystem`/system includes and
+`HeaderFilterRegex` scopes reporting to `FftwWrapper.h`, so none of their
+warnings are ever reported.
 
 ### Pre-commit hook
 
