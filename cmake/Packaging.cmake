@@ -7,9 +7,12 @@
 #
 # Build the packages with (umask 022 keeps directory perms at 0755):
 #   umask 022
-#   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+#   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
 #   cmake --build build -j"$(nproc)"
 #   ( cd build && cpack -G DEB )
+#
+# CMAKE_INSTALL_PREFIX=/usr is required, not optional. GNUInstallDirs only
+# expands CMAKE_INSTALL_LIBDIR to the Debian multiarch path 
 
 set(CPACK_PACKAGE_NAME      "encinowaves")
 set(CPACK_PACKAGE_VENDOR    "Honu Robotics")
@@ -19,6 +22,10 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "Headless spectral ocean-wave synthesis C++ library")
 
 set(CPACK_GENERATOR "DEB")
+# Debian packages live under /usr (the DEB generator's default, pinned here for
+# clarity). Pair with -DCMAKE_INSTALL_PREFIX=/usr at configure time so the
+# multiarch libdir matches; see the header comment above.
+set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
 set(CPACK_DEB_COMPONENT_INSTALL ON)
 set(CPACK_DEBIAN_ENABLE_COMPONENT_DEPENDS ON)
 set(CPACK_COMPONENTS_ALL runtime dev)
