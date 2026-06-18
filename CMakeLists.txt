@@ -72,20 +72,31 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen TBB::tbb Imath::Imath)
 
 # ---- install: headers, target, and the CMake package config ----
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+# COMPONENT tags split the install into the `runtime` (shared object) and `dev`
+# (headers, .so symlink, CMake config) sets that cmake/Packaging.cmake turns into
+# the libencinowaves1 / libencinowaves-dev .deb packages. A plain `cmake --install`
+# is unaffected; it still installs every component.
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT dev
+  DIRECTORY_PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE)
 
 install(TARGETS ${PROJECT_NAME}
   EXPORT   ${PROJECT_NAME}Targets
   LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
+           COMPONENT runtime
+           NAMELINK_COMPONENT dev
+  ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT dev
+  RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
   INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 set(_cfgdir ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
 install(EXPORT ${PROJECT_NAME}Targets
   FILE ${PROJECT_NAME}Targets.cmake
   NAMESPACE ${PROJECT_NAME}::
-  DESTINATION ${_cfgdir})
+  DESTINATION ${_cfgdir}
+  COMPONENT dev)
 
 configure_package_config_file(
   cmake/${PROJECT_NAME}Config.cmake.in
@@ -97,7 +108,16 @@ write_basic_package_version_file(
 install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
-  DESTINATION ${_cfgdir})
+  DESTINATION ${_cfgdir}
+  COMPONENT dev)
+
+# Each binary package needs its own machine-readable copyright (lintian).
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/copyright
+  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libencinowaves1
+  COMPONENT runtime)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/copyright
+  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libencinowaves-dev
+  COMPONENT dev)
 
 # ---- headless smoke tests (drivers exit non-zero on failure) ----
 if(BUILD_TESTING)
@@ -116,4 +136,11 @@ if(ENCINOWAVES_BUILD_BENCHMARKS)
   add_executable(bench_FftwWrapper benchmark/bench_FftwWrapper.cc)
   target_link_libraries(bench_FftwWrapper
     PRIVATE ${PROJECT_NAME} benchmark::benchmark)
+endif()
+
+# ---- Debian (.deb) packaging via CPack (top-level builds only) ----
+# Guarded so add_subdirectory() consumers don't inherit our CPack config.
+# (PROJECT_IS_TOP_LEVEL would be cleaner but needs CMake 3.21; floor here is 3.16.)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Packaging.cmake)
 endif()

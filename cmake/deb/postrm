@@ -1,0 +1,5 @@
+#!/bin/sh
+# ldconfig runs via the dpkg trigger declared in this package's "triggers"
+# control file (activate-noawait ldconfig), so no ldconfig call is needed here.
+set -e
+exit 0

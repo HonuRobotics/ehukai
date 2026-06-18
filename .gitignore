@@ -2,3 +2,5 @@
 # local sanitizer build trees (see CMake -DSANITIZE and .github/workflows/ci.yml)
 /build-asan/
 /build-tsan/
+# local Debian packaging build tree (see cmake/Packaging.cmake)
+/build-deb/
