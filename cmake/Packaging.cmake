@@ -85,9 +85,17 @@ if(NOT CMAKE_MATCH_1 STREQUAL _expected_changelog_version)
     "changelog.Debian version (${CMAKE_MATCH_1}) does not match the package "
     "version (${_expected_changelog_version}); update cmake/deb/changelog.Debian.")
 endif()
+# RESULT_VARIABLE rather than COMMAND_ERROR_IS_FATAL (CMake >= 3.19) to stay at
+# the 3.16 floor; a failed gzip would otherwise silently ship an empty/truncated
+# changelog.Debian.gz.
 execute_process(
   COMMAND ${GZIP_TOOL} -9nc "${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/changelog.Debian"
-  OUTPUT_FILE "${_changelog_gz}")
+  OUTPUT_FILE "${_changelog_gz}"
+  RESULT_VARIABLE _changelog_gz_result)
+if(NOT _changelog_gz_result EQUAL 0)
+  message(FATAL_ERROR
+    "Failed to compress changelog.Debian (gzip exit ${_changelog_gz_result})")
+endif()
 install(FILES "${_changelog_gz}"
   DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libencinowaves1    COMPONENT runtime)
 install(FILES "${_changelog_gz}"
