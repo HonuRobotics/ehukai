@@ -16,7 +16,7 @@
 
 set(CPACK_PACKAGE_NAME      "encinowaves")
 set(CPACK_PACKAGE_VENDOR    "Honu Robotics")
-set(CPACK_PACKAGE_CONTACT   "Honu Robotics <info@hohonurobotics.com>")
+set(CPACK_PACKAGE_CONTACT   "Honu Robotics <info@honurobotics.com>")
 set(CPACK_PACKAGE_VERSION   "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "Headless spectral ocean-wave synthesis C++ library")
