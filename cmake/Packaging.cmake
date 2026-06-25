@@ -70,6 +70,21 @@ set(CPACK_COMPONENT_DEV_DESCRIPTION
 # ---- Debian changelog (lintian requires a compressed changelog.Debian) ----
 find_program(GZIP_TOOL gzip REQUIRED)
 set(_changelog_gz "${CMAKE_CURRENT_BINARY_DIR}/changelog.Debian.gz")
+
+# The changelog is hand-maintained; fail loudly if its top entry drifts from
+# the version we are actually packaging (PROJECT_VERSION-PACKAGE_RELEASE).
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/changelog.Debian"
+  _changelog_first LIMIT_COUNT 1)
+if(NOT _changelog_first MATCHES "^encinowaves \\(([^)]+)\\)")
+  message(FATAL_ERROR
+    "Cannot parse version from changelog.Debian first line: '${_changelog_first}'")
+endif()
+set(_expected_changelog_version "${PROJECT_VERSION}-${CPACK_DEBIAN_PACKAGE_RELEASE}")
+if(NOT CMAKE_MATCH_1 STREQUAL _expected_changelog_version)
+  message(FATAL_ERROR
+    "changelog.Debian version (${CMAKE_MATCH_1}) does not match the package "
+    "version (${_expected_changelog_version}); update cmake/deb/changelog.Debian.")
+endif()
 execute_process(
   COMMAND ${GZIP_TOOL} -9nc "${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/changelog.Debian"
   OUTPUT_FILE "${_changelog_gz}")
