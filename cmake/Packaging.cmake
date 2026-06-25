@@ -60,9 +60,10 @@ set(CPACK_DEBIAN_DEV_PACKAGE_SECTION "libdevel")
 set(CPACK_COMPONENT_DEV_DEPENDS runtime)          # -> libencinowaves1 (= exact version)
 # The PUBLIC link deps surface in the installed headers and in
 # EncinoWavesConfig.cmake's find_dependency() calls, so downstream builds need
-# their -dev packages. Floors mirror EW_*_MIN in the top-level CMakeLists.txt.
+# their -dev packages. Floors reuse EW_*_MIN from the top-level CMakeLists.txt
+# so the packaging metadata can never drift from the build-time requirements.
 set(CPACK_DEBIAN_DEV_PACKAGE_DEPENDS
-    "libeigen3-dev (>= 3.4), libtbb-dev (>= 2021), libimath-dev (>= 3.1)")
+    "libeigen3-dev (>= ${EW_EIGEN3_MIN}), libtbb-dev (>= ${EW_TBB_MIN}), libimath-dev (>= ${EW_IMATH_MIN})")
 set(CPACK_COMPONENT_DEV_DESCRIPTION
     "Spectral ocean-wave synthesis library (Tessendorf-style FFT), headless\nwith no OpenGL viewer, for embedding in simulators and tools. This\npackage contains the development headers and the CMake package config.")
 
