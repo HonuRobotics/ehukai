@@ -1,0 +1,59 @@
+name: Release
+on:
+  push:
+    tags: [ 'v*' ]
+permissions:
+  contents: write
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { codename: noble,    image: "ubuntu:24.04", suffix: "~ubuntu24.04" }
+          - { codename: resolute, image: "ubuntu:26.04", suffix: "~ubuntu26.04" }
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install toolchain
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git cmake build-essential \
+            libeigen3-dev libtbb-dev libimath-dev lintian file
+      - uses: actions/checkout@v4
+      - name: Build and package
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+                -DBUILD_TESTING=OFF -DEW_DEB_DISTRO_SUFFIX="${{ matrix.suffix }}"
+          cmake --build build --target EncinoWaves -j"$(nproc)"
+          ( cd build && cpack -G DEB )
+      - name: Lintian (soft)
+        run: lintian build/*.deb || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.codename }}
+          path: build/*.deb
+  publish:
+    needs: build-deb
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create the GitHub Release and attach .debs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.deb --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+      - name: Notify the APT repository
+        env:
+          HONU_APT_TOKEN: ${{ secrets.HONU_APT_TOKEN }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $HONU_APT_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/HonuRobotics/apt-repository/dispatches \
+            -d "{\"event_type\":\"publish-deb\",\"client_payload\":{\"repo\":\"encinowaves\",\"tag\":\"$GITHUB_REF_NAME\"}}"
