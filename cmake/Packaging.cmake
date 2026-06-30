@@ -31,7 +31,14 @@ set(CPACK_DEBIAN_ENABLE_COMPONENT_DEPENDS ON)
 set(CPACK_COMPONENTS_ALL runtime dev)
 
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)            # libencinowaves1_1.0.0-1_amd64.deb
-set(CPACK_DEBIAN_PACKAGE_RELEASE 1)
+# Base Debian revision. CI appends a per-distribution suffix (e.g. ~ubuntu24.04)
+# via -DEW_DEB_DISTRO_SUFFIX so the same upstream version coexists across Ubuntu
+# releases and a release upgrade pulls the newer build (dpkg orders
+# ~ubuntu24.04 < ~ubuntu26.04). Unset, packaging is byte-for-byte as before.
+set(EW_DEB_DISTRO_SUFFIX "" CACHE STRING
+    "Per-distribution Debian version suffix, e.g. ~ubuntu24.04")
+set(_ew_deb_base_release 1)
+set(CPACK_DEBIAN_PACKAGE_RELEASE "${_ew_deb_base_release}${EW_DEB_DISTRO_SUFFIX}")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY optional)
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/HonuRobotics/encinowaves")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)            # auto runtime deps via dpkg-shlibdeps
@@ -79,7 +86,9 @@ if(NOT _changelog_first MATCHES "^encinowaves \\(([^)]+)\\)")
   message(FATAL_ERROR
     "Cannot parse version from changelog.Debian first line: '${_changelog_first}'")
 endif()
-set(_expected_changelog_version "${PROJECT_VERSION}-${CPACK_DEBIAN_PACKAGE_RELEASE}")
+# Assert against the BASE revision: the hand-maintained source changelog stays
+# release-agnostic; the distro suffix is stamped into the installed copy below.
+set(_expected_changelog_version "${PROJECT_VERSION}-${_ew_deb_base_release}")
 if(NOT CMAKE_MATCH_1 STREQUAL _expected_changelog_version)
   message(FATAL_ERROR
     "changelog.Debian version (${CMAKE_MATCH_1}) does not match the package "
@@ -88,8 +97,20 @@ endif()
 # RESULT_VARIABLE rather than COMMAND_ERROR_IS_FATAL (CMake >= 3.19) to stay at
 # the 3.16 floor; a failed gzip would otherwise silently ship an empty/truncated
 # changelog.Debian.gz.
+# Stamp the per-distribution suffix into the *installed* changelog so its top
+# entry matches the actual package version (dpkg + lintian correctness).
+set(_changelog_src "${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/changelog.Debian")
+if(EW_DEB_DISTRO_SUFFIX)
+  file(READ "${_changelog_src}" _changelog_text)
+  string(REPLACE
+    "encinowaves (${PROJECT_VERSION}-${_ew_deb_base_release})"
+    "encinowaves (${PROJECT_VERSION}-${_ew_deb_base_release}${EW_DEB_DISTRO_SUFFIX})"
+    _changelog_text "${_changelog_text}")
+  set(_changelog_src "${CMAKE_CURRENT_BINARY_DIR}/changelog.Debian.stamped")
+  file(WRITE "${_changelog_src}" "${_changelog_text}")
+endif()
 execute_process(
-  COMMAND ${GZIP_TOOL} -9nc "${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/changelog.Debian"
+  COMMAND ${GZIP_TOOL} -9nc "${_changelog_src}"
   OUTPUT_FILE "${_changelog_gz}"
   RESULT_VARIABLE _changelog_gz_result)
 if(NOT _changelog_gz_result EQUAL 0)
