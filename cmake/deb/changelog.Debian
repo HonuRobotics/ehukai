@@ -1,0 +1,5 @@
+encinowaves (1.0.0-1) noble; urgency=medium
+
+  * Initial Debian packaging via CPack (component-based library/dev split).
+
+ -- Jose Luis Rivero <jrivero@honurobotics.com>  Wed, 17 Jun 2026 00:00:00 +0200
