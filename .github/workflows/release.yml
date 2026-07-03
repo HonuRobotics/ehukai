@@ -27,7 +27,8 @@ jobs:
       - name: Build and package
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
-                -DBUILD_TESTING=OFF -DEW_DEB_DISTRO_SUFFIX="${{ matrix.suffix }}"
+                -DBUILD_TESTING=OFF -DEW_DEB_DISTRO_SUFFIX="${{ matrix.suffix }}" \
+                -DEW_DEB_DISTRO_CODENAME="${{ matrix.codename }}"
           cmake --build build --target EncinoWaves -j"$(nproc)"
           ( cd build && cpack -G DEB )
       - name: Lintian (soft)

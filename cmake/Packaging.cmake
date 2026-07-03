@@ -37,6 +37,8 @@ set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)            # libencinowaves1_1.0.0-1_amd
 # ~ubuntu24.04 < ~ubuntu26.04). Unset, packaging is byte-for-byte as before.
 set(EW_DEB_DISTRO_SUFFIX "" CACHE STRING
     "Per-distribution Debian version suffix, e.g. ~ubuntu24.04")
+set(EW_DEB_DISTRO_CODENAME "" CACHE STRING
+    "Target distribution codename for the changelog top entry, e.g. noble")
 set(_ew_deb_base_release 1)
 set(CPACK_DEBIAN_PACKAGE_RELEASE "${_ew_deb_base_release}${EW_DEB_DISTRO_SUFFIX}")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY optional)
@@ -97,8 +99,9 @@ endif()
 # RESULT_VARIABLE rather than COMMAND_ERROR_IS_FATAL (CMake >= 3.19) to stay at
 # the 3.16 floor; a failed gzip would otherwise silently ship an empty/truncated
 # changelog.Debian.gz.
-# Stamp the per-distribution suffix into the *installed* changelog so its top
-# entry matches the actual package version (dpkg + lintian correctness).
+# Stamp the per-distribution suffix and codename into the *installed* changelog
+# so its top entry matches the actual package version and target distribution
+# (dpkg + lintian correctness).
 set(_changelog_src "${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/changelog.Debian")
 if(EW_DEB_DISTRO_SUFFIX)
   file(READ "${_changelog_src}" _changelog_text)
@@ -106,6 +109,15 @@ if(EW_DEB_DISTRO_SUFFIX)
     "encinowaves (${PROJECT_VERSION}-${_ew_deb_base_release})"
     "encinowaves (${PROJECT_VERSION}-${_ew_deb_base_release}${EW_DEB_DISTRO_SUFFIX})"
     _changelog_text "${_changelog_text}")
+  # Retarget the top entry's distribution to this build's codename (the source
+  # changelog carries a single fixed codename). Rewrite the field up to the ';'
+  # so it is agnostic to whatever codename the source file happens to name.
+  if(EW_DEB_DISTRO_CODENAME)
+    string(REGEX REPLACE
+      "^(encinowaves \\([^)]+\\)) +[^;]+;"
+      "\\1 ${EW_DEB_DISTRO_CODENAME};"
+      _changelog_text "${_changelog_text}")
+  endif()
   set(_changelog_src "${CMAKE_CURRENT_BINARY_DIR}/changelog.Debian.stamped")
   file(WRITE "${_changelog_src}" "${_changelog_text}")
 endif()
