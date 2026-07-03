@@ -2,8 +2,11 @@ name: Release
 on:
   push:
     tags: [ 'v*' ]
+# Least privilege by default: the build matrix needs no write scope (artifacts
+# use the Actions runtime token). Only the publish job elevates to contents:
+# write, below, to create the GitHub Release.
 permissions:
-  contents: write
+  contents: read
 jobs:
   build-deb:
     runs-on: ubuntu-latest
@@ -39,7 +42,12 @@ jobs:
           path: build/*.deb
   publish:
     needs: build-deb
+    # Skip on forks: HONU_APT_TOKEN is absent there and only this repository
+    # should publish releases / notify the APT repository.
+    if: github.repository == 'HonuRobotics/encinowaves'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh release create
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -48,7 +56,15 @@ jobs:
       - name: Create the GitHub Release and attach .debs
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.deb --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+        # Idempotent: create the release on the first run, or re-attach the
+        # .debs (--clobber overwrites same-named assets) if it already exists,
+        # so a re-run or re-pushed tag does not fail on "release already exists".
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/*.deb --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.deb --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+          fi
       - name: Notify the APT repository
         env:
           HONU_APT_TOKEN: ${{ secrets.HONU_APT_TOKEN }}
