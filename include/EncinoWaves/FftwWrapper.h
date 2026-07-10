@@ -25,6 +25,7 @@
 #include <complex>
 #include <cstdlib>
 #include <memory>
+#include <stdexcept>
 #include <type_traits>
 #include <vector>
 
@@ -88,8 +89,9 @@ namespace detail
   // Output: slow x fast real, row-major; row r at out[r * outputRowStride].
   // `fast` (the inner/hermitian dim) must be even: the KissFFT-backed real
   // inverse yields 2*(halfFast-1) reals, which equals `fast` only when `fast`
-  // is even. Odd `fast` is rejected by the guard below rather than overrunning
-  // the copy-out.
+  // is even. Invalid dimensions or null buffers throw std::invalid_argument —
+  // silently returning would hand the caller a stale output buffer with no
+  // diagnostic (and an odd `fast` would otherwise overrun the copy-out).
   // The column-pass scratch is a per-call local, so one plan may be executed
   // concurrently with different in/out buffers — matching FFTW's documented
   // thread-safety contract that SpectralSpatialField relies on.
@@ -102,9 +104,13 @@ namespace detail
     using VecR = Eigen::Matrix<T, Eigen::Dynamic, 1>;
 
     const int halfFast = (fast / 2) + 1;
-    if (slow <= 0 || fast <= 0 || halfFast <= 0 || (fast % 2) != 0 ||
-        in == nullptr || out == nullptr)
-      return;
+    if (slow <= 0 || fast <= 0 || (fast % 2) != 0)
+      throw std::invalid_argument(
+          "Execute2dC2r: dimensions must be positive with an even inner "
+          "(fast) dimension");
+    if (in == nullptr || out == nullptr)
+      throw std::invalid_argument(
+          "Execute2dC2r: input and output buffers must be non-null");
 
     // Per-call column-pass scratch — never shared, so concurrent executions of
     // the same plan do not race on it.

@@ -18,7 +18,8 @@
  *      a single-mode cosine in the spatial domain with amplitude consistent
  *      with FFTW's unnormalized convention.
  *   4-5. Caller-supplied buffers and padded-output row strides.
- *   6-9. Defensive guards (null input, odd inner dim), the non-padded guru
+ *   6-9. Defensive guards (null input and odd inner dim throw
+ *      std::invalid_argument, output untouched), the non-padded guru
  *      plan, and the thin threading / alloc / null-plan surface.
  *   10-12. Surface shapes the earlier tests miss: a column-axis cosine (drives
  *      the Hermitian row pass on non-flat input), a sine (verifies phase is
@@ -49,6 +50,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <random>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -251,14 +253,27 @@ int RunForType(const char *typeName)
     return true;
   });
 
-  // --- Test 6: defensive guard — invalid args are a no-op ----------------
-  // A null input pointer makes the IFFT bail at the early-return guard
-  // without touching the output buffer.
-  Check("invalid args → early return, output untouched", failures, [&]() {
+  // --- Test 6: defensive guard — invalid args throw -----------------------
+  // A null input pointer makes the IFFT throw std::invalid_argument without
+  // touching the output buffer.
+  Check("invalid args → throw, output untouched", failures, [&]() {
     std::fill(out.begin(), out.end(), T(42));
     auto plan = FFT::plan_dft_c2r_2d(Slow, Fast, spec.data(), out.data(), 0u);
-    FFT::execute_dft_c2r(plan, nullptr, out.data());  // in == nullptr → return
+    bool threw = false;
+    try
+    {
+      FFT::execute_dft_c2r(plan, nullptr, out.data());  // in == nullptr
+    }
+    catch (const std::invalid_argument &)
+    {
+      threw = true;
+    }
     FFT::destroy_plan(plan);
+    if (!threw)
+    {
+      std::cout << "(no exception thrown) ";
+      return false;
+    }
     const bool untouched =
         std::all_of(out.begin(), out.end(), [](T v) { return v == T(42); });
     if (!untouched) std::cout << "(buffer was modified) ";
@@ -301,8 +316,9 @@ int RunForType(const char *typeName)
 
   // --- Test 9: odd inner dimension is rejected (memory-safety guard) ------
   // The KissFFT real inverse requires an even `fast`; an odd `fast` must
-  // early-return without touching the output (no heap overrun).
-  Check("odd inner dim → rejected, output untouched", failures, [&]() {
+  // throw std::invalid_argument without touching the output (no heap
+  // overrun).
+  Check("odd inner dim → throw, output untouched", failures, [&]() {
     constexpr int OddFast = 7;
     const int oddHalf = (OddFast / 2) + 1;
     std::vector<Complex> oddSpec(
@@ -310,8 +326,21 @@ int RunForType(const char *typeName)
     std::vector<T> oddOut(static_cast<std::size_t>(Slow) * OddFast, T(13));
     auto plan = FFT::plan_dft_c2r_2d(Slow, OddFast, oddSpec.data(),
                                      oddOut.data(), 0u);
-    FFT::execute(plan);
+    bool threw = false;
+    try
+    {
+      FFT::execute(plan);
+    }
+    catch (const std::invalid_argument &)
+    {
+      threw = true;
+    }
     FFT::destroy_plan(plan);
+    if (!threw)
+    {
+      std::cout << "(no exception thrown) ";
+      return false;
+    }
     const bool untouched = std::all_of(oddOut.begin(), oddOut.end(),
                                        [](T v) { return v == T(13); });
     if (!untouched) std::cout << "(odd-dim output was written) ";
