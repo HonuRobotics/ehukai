@@ -123,7 +123,6 @@ public:
     std::normal_distribution<T> norm{T(3.30), std::sqrt(T(0.67))};
     r48.seed(i_params.random.seed + 191819);
     T gamma = Imath::clamp(norm(r48), T(1.0), T(6.0));
-    // gamma = T( 3.30 );
 
     init(i_params.gravity, i_params.windSpeed, i_params.fetch, gamma);
   }

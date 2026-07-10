@@ -326,18 +326,6 @@ template <typename T> struct InterpolateIntoB {
 };
 
 //-*****************************************************************************
-template <typename T> struct MultB {
-  const T *A;
-  T *B;
-
-  void operator()(const tbb::blocked_range<std::size_t> &i_range) const {
-    for (std::size_t i = i_range.begin(); i != i_range.end(); ++i) {
-      B[i] *= A[i];
-    }
-  }
-};
-
-//-*****************************************************************************
 template <typename T>
 void Propagation<T>::propagate(const Parameters<T> &i_params,
                                const InitialState<T> &i_istate,
@@ -345,7 +333,6 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
   // Check sizes.
   int N = o_pstate.Height.unpaddedWidth();
   std::size_t dataSize = o_pstate.Height.size();
-  std::size_t grainSize = 1024;
   EWAV_ASSERT(
       i_istate.HSpectralPos.height() == N &&
           i_istate.HSpectralNeg.height() == N && i_istate.Omega.height() == N &&
@@ -404,9 +391,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     F.Dyy = o_pstate.Dy.cdata();
     F.Dxy_and_MinE = o_pstate.MinE.data();
     F.Pinch = T(1.25);
-    // CJH HACK
-    tbb::parallel_for(
-        tbb::blocked_range<std::size_t>(0, dataSize /*, grainSize*/), F);
+    tbb::parallel_for(tbb::blocked_range<std::size_t>(0, dataSize), F);
   }
 
   // Make DxSpec from Hspec
@@ -496,9 +481,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     F.Dyy = FiltDy.cdata();
     F.Dxy_and_MinE = FiltMinE.data();
     F.Pinch = T(1.25);
-    // CJH HACK
-    tbb::parallel_for(
-        tbb::blocked_range<std::size_t>(0, dataSize /*, grainSize*/), F);
+    tbb::parallel_for(tbb::blocked_range<std::size_t>(0, dataSize), F);
   }
 
   // Make DxFiltSpec from HFiltspec
@@ -524,11 +507,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
   { Converter.execute(TempSpec, FiltDy); }
 
   // Compute FiltH.
-  {
-    // CJH HACK
-    // Converter.execute( HSpec, FiltHeight );
-    Converter.execute(HFiltSpec, FiltHeight);
-  }
+  { Converter.execute(HFiltSpec, FiltHeight); }
 
   // Get Stats about FiltH and FiltMinE
   Stats<T> stats(FiltHeight, FiltMinE);
@@ -550,9 +529,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     F.MaxClipE = 1.1;
     F.MinInterpolant = T(1) - i_params.troughDamping;
     F.MinE_And_Interpolant = FiltMinE.data();
-    // CJH HACK
-    tbb::parallel_for(
-        tbb::blocked_range<std::size_t>(0, dataSize /*, grainSize*/), F);
+    tbb::parallel_for(tbb::blocked_range<std::size_t>(0, dataSize), F);
   }
 
   // Interpolate into output state.
@@ -561,9 +538,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     F.A = FiltHeight.cdata();
     F.B = o_pstate.Height.data();
     F.Interpolant = FiltMinE.cdata();
-    // CJH HACK
-    tbb::parallel_for(
-        tbb::blocked_range<std::size_t>(0, dataSize /*, grainSize*/), F);
+    tbb::parallel_for(tbb::blocked_range<std::size_t>(0, dataSize), F);
   }
 
   // Interpolate into output state.
@@ -572,9 +547,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     F.A = FiltDx.cdata();
     F.B = o_pstate.Dx.data();
     F.Interpolant = FiltMinE.cdata();
-    // CJH HACK
-    tbb::parallel_for(
-        tbb::blocked_range<std::size_t>(0, dataSize /*, grainSize*/), F);
+    tbb::parallel_for(tbb::blocked_range<std::size_t>(0, dataSize), F);
   }
 
   // Interpolate into output state.
@@ -583,23 +556,8 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     F.A = FiltDy.cdata();
     F.B = o_pstate.Dy.data();
     F.Interpolant = FiltMinE.cdata();
-    // CJH HACK
-    tbb::parallel_for(
-        tbb::blocked_range<std::size_t>(0, dataSize /*, grainSize*/), F);
+    tbb::parallel_for(tbb::blocked_range<std::size_t>(0, dataSize), F);
   }
-
-#if 0
-    // Mult output MinE
-    {
-        MultB<T> F;
-        F.A = FiltMinE.cdata();
-        F.B = o_pstate.MinE.data();
-        // CJH HACK
-        tbb::parallel_for(
-            tbb::blocked_range<std::size_t>( 0, dataSize/*, grainSize*/ ),
-            F );
-    }
-#endif
 }
 
 } // namespace EncinoWaves

@@ -276,23 +276,13 @@ public:
 
     if (i_numThreads > 1) {
       FftwInitThreadsT<T>();
-      // std::cout << "initialized threads" << std::endl;
       FFT::plan_with_nthreads(i_numThreads);
-      // std::cout << "Using: " << i_numThreads << " threads" << std::endl;
     }
 
-// We're creating an out-of-place transform that destroys input.
-#if 0
-        m_plan = FFT::plan_dft_c2r_2d( m_widthHeight, m_widthHeight,
-                                       i_spectral.data(),
-                                       o_spatial.data(),
-                                       FFTW_ESTIMATE | FFTW_DESTROY_INPUT );
-#else
+    // We're creating an out-of-place transform that destroys input.
     m_plan = FFT::plan_guru_dft_c2r(m_widthHeight, m_widthHeight,
                                     i_spectral.data(), o_spatial.data(),
                                     FFTW_ESTIMATE | FFTW_DESTROY_INPUT);
-
-#endif
   }
 
   // Owns m_plan; copying would double-destroy it.
@@ -366,9 +356,7 @@ public:
 
     if (i_numThreads > 1) {
       FftwInitThreadsT<T>();
-      // std::cout << "initialized threads" << std::endl;
       FFT::plan_with_nthreads(i_numThreads);
-      // std::cout << "Using: " << i_numThreads << " threads" << std::endl;
     }
 
     // We're creating an out-of-place transform that destroys input.
