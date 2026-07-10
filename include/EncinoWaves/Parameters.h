@@ -166,7 +166,9 @@ struct Parameters {
     , troughDampingBigWavelength(4.0)
     , troughDampingSoftWidth(2.0) {}
 
-  int resolution() const { return 1 << resolutionPowerOfTwo; }
+  // Routed through PowerOfTwo so out-of-range exponents clamp to [1, 2^30]
+  // exactly like the field allocations do, instead of shifting into UB.
+  int resolution() const { return PowerOfTwo(resolutionPowerOfTwo); }
 };
 
 //-*****************************************************************************

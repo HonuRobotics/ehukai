@@ -105,7 +105,7 @@ SINGULAR_VALUE_TYPE(Imath::Vec3<double>, double);
 #undef SINGULAR_VALUE_TYPE
 
 //-*****************************************************************************
-static int PowerOfTwo(int i_power) {
+constexpr int PowerOfTwo(int i_power) {
   if (i_power <= 0) {
     return 1;
   } else if (i_power >= 30) {
