@@ -57,10 +57,16 @@ uint32_t SeedFromWavenumber(const Imath::Vec2<T> &i_wavenumber,
   static constexpr uint32_t p3 = 83492791;
 
   // Truncate the ks to some precision, and then make them
-  // into seeds.
+  // into seeds. Wavenumber components can be negative, and a direct
+  // float-to-uint32_t conversion of a negative value is undefined behavior;
+  // go through int64_t (in range for any realistic wavenumber) so the
+  // final wrap to uint32_t is well-defined modulo arithmetic.
+  const auto quantize = [](T i_value) {
+    return static_cast<uint32_t>(static_cast<int64_t>(i_value * 10000));
+  };
 
-  return (static_cast<uint32_t>(i_wavenumber[0] * 10000) * p1) ^
-         (static_cast<uint32_t>(i_wavenumber[1] * 10000) * p2) ^ (i_seed * p3);
+  return (quantize(i_wavenumber[0]) * p1) ^ (quantize(i_wavenumber[1]) * p2) ^
+         (i_seed * p3);
 }
 
 //-*****************************************************************************
