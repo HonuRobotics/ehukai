@@ -536,8 +536,16 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
   // Compute interpolant from stats.
   {
     ConvertMinEToInterpolant<T> F;
-    F.GainMinE = T(1) / (T(2) * stats.StdDevMinE);
-    F.BiasMinE = -stats.MeanMinE / (T(2) * stats.StdDevMinE);
+    if (stats.StdDevMinE > T(0)) {
+      F.GainMinE = T(1) / (T(2) * stats.StdDevMinE);
+      F.BiasMinE = -stats.MeanMinE / (T(2) * stats.StdDevMinE);
+    } else {
+      // Uniform MinE field: every sample sits at the mean, so the
+      // normalized deviation is zero everywhere. Dividing by the zero
+      // standard deviation would inject inf/NaN into the heights.
+      F.GainMinE = T(0);
+      F.BiasMinE = T(0);
+    }
     F.MinClipE = 0.0;
     F.MaxClipE = 1.1;
     F.MinInterpolant = T(1) - i_params.troughDamping;
