@@ -32,8 +32,8 @@
 // Los Angeles, Aug. 8, 2015, pp. 29-39.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_Spectra_h_
-#define _EncinoWaves_Spectra_h_
+#ifndef ENCINOWAVES_SPECTRA_H
+#define ENCINOWAVES_SPECTRA_H
 
 #include "Foundation.h"
 #include "Parameters.h"

@@ -32,8 +32,8 @@
 // Los Angeles, Aug. 8, 2015, pp. 29-39.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_Normals_h_
-#define _EncinoWaves_Normals_h_
+#ifndef ENCINOWAVES_NORMALS_H
+#define ENCINOWAVES_NORMALS_H
 
 #include "Foundation.h"
 #include "SpectralSpatialField.h"

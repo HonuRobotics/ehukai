@@ -32,8 +32,8 @@
 // Los Angeles, Aug. 8, 2015, pp. 29-39.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_Basics_h_
-#define _EncinoWaves_Basics_h_
+#ifndef ENCINOWAVES_BASICS_H
+#define ENCINOWAVES_BASICS_H
 
 #include "Foundation.h"
 

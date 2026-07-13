@@ -31,8 +31,8 @@
  * for them.
  */
 
-#ifndef _EncinoWaves_Util_Foundation_h_
-#define _EncinoWaves_Util_Foundation_h_
+#ifndef ENCINOWAVES_UTIL_FOUNDATION_H
+#define ENCINOWAVES_UTIL_FOUNDATION_H
 
 #include <sys/time.h>
 
@@ -79,4 +79,4 @@ using std::uint64_t;
 }  // namespace Util
 }  // namespace EncinoWaves
 
-#endif  // _EncinoWaves_Util_Foundation_h_
+#endif  // ENCINOWAVES_UTIL_FOUNDATION_H

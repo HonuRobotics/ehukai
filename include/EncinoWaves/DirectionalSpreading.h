@@ -32,8 +32,8 @@
 // Los Angeles, Aug. 8, 2015, pp. 29-39.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_DirectionalSpreading_h_
-#define _EncinoWaves_DirectionalSpreading_h_
+#ifndef ENCINOWAVES_DIRECTIONALSPREADING_H
+#define ENCINOWAVES_DIRECTIONALSPREADING_H
 
 #include "Foundation.h"
 #include "Basics.h"

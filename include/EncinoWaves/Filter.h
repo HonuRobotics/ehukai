@@ -32,8 +32,8 @@
 // Los Angeles, Aug. 8, 2015, pp. 29-39.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_Filter_h_
-#define _EncinoWaves_Filter_h_
+#ifndef ENCINOWAVES_FILTER_H
+#define ENCINOWAVES_FILTER_H
 
 #include "Foundation.h"
 #include "Parameters.h"

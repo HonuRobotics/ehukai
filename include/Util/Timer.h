@@ -14,8 +14,8 @@
 // limitations under the License.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_Util_Timer_h_
-#define _EncinoWaves_Util_Timer_h_
+#ifndef ENCINOWAVES_UTIL_TIMER_H
+#define ENCINOWAVES_UTIL_TIMER_H
 
 #include "Foundation.h"
 
