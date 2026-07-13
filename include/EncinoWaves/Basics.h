@@ -51,11 +51,6 @@ constexpr T PI_2 = PI<T> / 2;
 // Wave stuff is easier with Tau (2Pi) than it is with Pi.
 //-*****************************************************************************
 //-*****************************************************************************
-#ifndef M_TAU
-// This is 2.0 * M_PI, to same number of significant digits.
-#define M_TAU 6.28318530717958647693
-#endif
-
 template <typename T>
 constexpr T TAU = 2 * PI<T>;
 
