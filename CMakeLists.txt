@@ -29,12 +29,17 @@ set(SANITIZE "" CACHE STRING
     "Build with a sanitizer: address | thread | undefined (empty = none)")
 set_property(CACHE SANITIZE PROPERTY STRINGS "" address thread undefined)
 if(SANITIZE)
+  # float-cast-overflow is spelled out because GCC's -fsanitize=undefined
+  # does not include it (Clang's does); it catches out-of-range
+  # float-to-integer casts like the historical SeedFromWavenumber bug.
   if(SANITIZE STREQUAL "address")
-    set(_san_flags -fsanitize=address,undefined -fno-sanitize-recover=all)
+    set(_san_flags -fsanitize=address,undefined,float-cast-overflow
+        -fno-sanitize-recover=all)
   elseif(SANITIZE STREQUAL "thread")
     set(_san_flags -fsanitize=thread)
   elseif(SANITIZE STREQUAL "undefined")
-    set(_san_flags -fsanitize=undefined -fno-sanitize-recover=all)
+    set(_san_flags -fsanitize=undefined,float-cast-overflow
+        -fno-sanitize-recover=all)
   else()
     message(FATAL_ERROR
             "SANITIZE='${SANITIZE}' is not one of: address, thread, undefined")
