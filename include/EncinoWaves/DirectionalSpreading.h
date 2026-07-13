@@ -93,7 +93,7 @@ T modalAngularFrequencyJONSWAP(T gravity, T meanWindSpeed, T fetchKm) {
 template <typename T>
 class DonelanBannerDirectionalSpreading {
 public:
-  DonelanBannerDirectionalSpreading(const Parameters<T>& params)
+  explicit DonelanBannerDirectionalSpreading(const Parameters<T>& params)
       : m_modalAngularFrequency(modalAngularFrequencyJONSWAP(
           params.gravity, params.windSpeed, params.fetch))
       , m_swell(params.directionalSpreading.swell) {}
@@ -283,7 +283,7 @@ public:
 template <typename T>
 class PosCosSquaredDirectionalSpreading {
 public:
-  PosCosSquaredDirectionalSpreading(const Parameters<T>& params)
+  explicit PosCosSquaredDirectionalSpreading(const Parameters<T>& params)
       : m_modalAngularFrequency(modalAngularFrequencyJONSWAP(
           params.gravity, params.windSpeed, params.fetch))
       , m_swell(params.directionalSpreading.swell) {}
