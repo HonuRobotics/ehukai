@@ -45,36 +45,47 @@ namespace EncinoWaves {
 //-*****************************************************************************
 
 //-*****************************************************************************
+// The separable 4x4 downsampling kernel weights, in one place: rows/columns
+// use (corner, edge, edge, corner) at the edges of the footprint and
+// (edge, center, center, edge) at its center.
+template <typename T>
+struct Kernel4x4Weights {
+  static constexpr T center = 0.185622;
+  static constexpr T edge   = 0.029797;
+  static constexpr T corner = 0.004783;
+};
+
+//-*****************************************************************************
 template <typename T>
 struct EdgeKernel {
-  static constexpr T edge4x4   = 0.029797;
-  static constexpr T corner4x4 = 0.004783;
+  typedef Kernel4x4Weights<T> W;
   T operator()(const T& a, const T& b, const T& c, const T& d) const {
-    return ((a + d) * corner4x4) + ((b + c) * edge4x4);
+    return ((a + d) * W::corner) + ((b + c) * W::edge);
   }
   T operator()(const T* v) const {
-    return ((v[0] + v[3]) * corner4x4) + ((v[1] + v[2]) * edge4x4);
+    return ((v[0] + v[3]) * W::corner) + ((v[1] + v[2]) * W::edge);
   }
 };
 
 //-*****************************************************************************
 template <typename T>
 struct CenterKernel {
-  static constexpr T center4x4 = 0.185622;
-  static constexpr T edge4x4 = 0.029797;
+  typedef Kernel4x4Weights<T> W;
   T operator()(const T& a, const T& b, const T& c, const T& d) const {
-    return ((a + d) * edge4x4) + ((b + c) * center4x4);
+    return ((a + d) * W::edge) + ((b + c) * W::center);
   }
   T operator()(const T* v) const {
-    return ((v[0] + v[3]) * edge4x4) + ((v[1] + v[2]) * center4x4);
+    return ((v[0] + v[3]) * W::edge) + ((v[1] + v[2]) * W::center);
   }
 };
 
 //-*****************************************************************************
 template <typename T, typename TRANSFER_OP, typename KERNEL>
 void DownsampleTransferFunc(const T* i_src, int i_srcN, T* o_dst, int i_dstN) {
-  static TRANSFER_OP top;
-  static KERNEL k;
+  // Plain (stateless) locals: these ran under TBB workers as function-local
+  // statics, which would become a data race the day either type gained state.
+  TRANSFER_OP top;
+  KERNEL k;
 
   // Do the first pixel.
   top(o_dst[0], k(i_src[i_srcN - 1], i_src[0], i_src[1], i_src[2]));
@@ -107,10 +118,6 @@ struct PlusEqualsTransferOp {
 //-*****************************************************************************
 template <typename T>
 struct DownsampleFunc {
-  static constexpr T center4x4 = 0.185622;
-  static constexpr T edge4x4   = 0.029797;
-  static constexpr T corner4x4 = 0.004783;
-
   typedef T value_type;
   typedef DownsampleFunc<T> this_type;
 
@@ -121,14 +128,6 @@ struct DownsampleFunc {
   T* Dst;
   int DstN;
   int DstStrideJ;
-
-  T& dstPixel(int i, int j) {
-    return Dst[wrap(i, DstN) + (wrap(j, DstN) * DstStrideJ)];
-  }
-
-  T srcPixel(int i, int j) const {
-    return Src[wrap(i, SrcN) + (wrap(j, SrcN) * SrcStrideJ)];
-  }
 
   void processDstLine(int j) const {
     int srcJ = j * 2;
