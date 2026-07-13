@@ -40,12 +40,17 @@
 
 namespace EncinoWaves {
 
+//! Dispersion relationship linking wave number to angular frequency.
+//! Capillary generalizes finite-depth, which generalizes deep water, so
+//! kCapillaryDispersion is a safe default for all conditions.
 enum DispersionType {
   kDeepDispersion,
   kFiniteDepthDispersion,
   kCapillaryDispersion
 };
 
+//! Non-directional wave energy spectrum. TMA extends JONSWAP with a
+//! depth attenuation; JONSWAP extends Pierson-Moskowitz with fetch.
 enum SpectrumType {
   kPiersonMoskowitzSpectrum,
   kJONSWAPSpectrum,
@@ -54,6 +59,8 @@ enum SpectrumType {
   kNumSpectrumTypes
 };
 
+//! Directional spreading model distributing spectral energy over
+//! direction relative to the wind.
 enum DirectionalSpreadingType {
   kPosCosThetaSqrDirectionalSpreading,
   kMitsuyasuDirectionalSpreading,
@@ -61,60 +68,77 @@ enum DirectionalSpreadingType {
   kDonelanBannerDirectionalSpreading,
 };
 
+//! Optional wavelength band-pass applied to the initial amplitudes.
 enum FilterType {
   kNullFilter,
   kSmoothInvertibleBandPassFilter,
 };
 
+//! Distribution of the random amplitude draws.
 enum RandomType {
   kNormalRandom,
   kLogNormalRandom,
 };
 
+//! All simulation inputs. Everything a wave field needs is gathered here;
+//! pass one Parameters to InitialState, Propagation, and ComputeNormals.
+//! Defaults describe a 100 m deep-ocean tile under a 17 m/s wind.
 template <typename T>
 struct Parameters {
-  // Resolution of the waves.
+  //! Grid resolution exponent: the simulation runs on a
+  //! 2^resolutionPowerOfTwo square grid (clamped to [1, 2^30]).
   int resolutionPowerOfTwo;
 
-  // Domain of the waves. - this is the size of the world space
-  // that they occupy.
-  T domain;  // in meters
+  //! World-space size of the (square, tiling) simulated patch, in meters.
+  T domain;
 
-  // Some physical parameters.
-  T gravity;         // in meters per second squared.
-  T surfaceTension;  // in Newtons per meter
-  T density;         // in kilograms per meter cubed
-  T depth;           // in meters.
+  //! Gravitational acceleration, in meters per second squared.
+  T gravity;
+  //! Surface tension, in Newtons per meter (capillary dispersion only).
+  T surfaceTension;
+  //! Water density, in kilograms per cubic meter (capillary dispersion).
+  T density;
+  //! Water depth, in meters (finite-depth/capillary dispersion and TMA).
+  T depth;
 
-  // Wind stuff. It is assumed that wind travels along the positive
-  // X axis, since we assume these fields can be externally transformed.
-  // Wind speed is in meters per second.
-  T windSpeed;  // in meters per second
-  T fetch;      // in KILOMETERS
+  //! Wind speed, in meters per second. Wind is assumed to blow along the
+  //! positive X axis; rotate the resulting fields externally if needed.
+  T windSpeed;
+  //! Fetch (distance over which the wind has blown), in KILOMETERS.
+  T fetch;
 
-  T pinch;          // lateral displacement
-  T amplitudeGain;  // vertical displacement
+  //! Lateral displacement (chop) gain applied to Dx/Dy.
+  T pinch;
+  //! Vertical displacement gain applied to the height field.
+  T amplitudeGain;
 
+  //! Strength of the trough attenuation pass in Propagation, in [0, 1];
+  //! 0 disables it (and skips its extra FFTs).
   T troughDamping;
+  //! Small-wavelength edge of the trough-damping band, in meters.
   T troughDampingSmallWavelength;
+  //! Big-wavelength edge of the trough-damping band, in meters.
   T troughDampingBigWavelength;
+  //! Soft transition width added around the damping band, in meters.
   T troughDampingSoftWidth;
 
-  // Dispersion Stuff - Deep, FiniteDepth, Capillary
+  //! Dispersion relationship selection.
   struct Dispersion {
     DispersionType type;
     Dispersion()
       : type(kCapillaryDispersion) {}
   } dispersion;
 
-  // Spectrum Stuff - Phillips, Pierson-Moskowitz, JONSWAP, TMA
+  //! Non-directional spectrum selection.
   struct Spectrum {
     SpectrumType type;
     Spectrum()
       : type(kTMASpectrum) {}
   } spectrum;
 
-  // Directional Spreading Stuff
+  //! Directional spreading selection. swell in [0, 1] elongates crests
+  //! toward the wind direction; negative values (down to -1) blend toward
+  //! an isotropic, directionless sea.
   struct DirectionalSpreading {
     DirectionalSpreadingType type;
     T swell;
@@ -123,7 +147,10 @@ struct Parameters {
       , swell(0.0) {}
   } directionalSpreading;
 
-  // Filter
+  //! Wavelength band-pass filter over the initial amplitudes. Wavelengths
+  //! between smallWavelength and bigWavelength (in meters, with softWidth
+  //! easing at the edges) are kept; the rest attenuate to min. invert
+  //! flips the band.
   struct Filter {
     FilterType type;
     T softWidth;
@@ -140,7 +167,8 @@ struct Parameters {
       , invert(false) {}
   } filter;
 
-  // Random Stuff
+  //! Random distribution selection and seed. The same seed reproduces the
+  //! same ocean on the same platform.
   struct Random {
     RandomType type;
     int seed;
@@ -149,7 +177,6 @@ struct Parameters {
       , seed(54321) {}
   } random;
 
-  // Constructor
   Parameters()
     : resolutionPowerOfTwo(9)
     , domain(100.0)
@@ -166,8 +193,9 @@ struct Parameters {
     , troughDampingBigWavelength(4.0)
     , troughDampingSoftWidth(2.0) {}
 
-  // Routed through PowerOfTwo so out-of-range exponents clamp to [1, 2^30]
-  // exactly like the field allocations do, instead of shifting into UB.
+  //! Grid resolution (cells per side). Routed through PowerOfTwo so
+  //! out-of-range exponents clamp to [1, 2^30] exactly like the field
+  //! allocations do, instead of shifting into UB.
   int resolution() const { return PowerOfTwo(resolutionPowerOfTwo); }
 };
 
