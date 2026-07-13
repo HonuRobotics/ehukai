@@ -20,7 +20,7 @@ namespace EncinoWaves {
 namespace Util {
 
 //-*****************************************************************************
-void __EWAV_DEBUG_ASSERT_FAIL(const char* msg) throw() {
+void EwavDebugAssertFail(const char* msg) noexcept {
   std::cerr << msg << std::endl;
   abort();
 }
