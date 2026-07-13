@@ -85,7 +85,7 @@ public:
     this->seed(m_seed);
   }
 
-  BaseRandom(const Parameters<T> &i_params)
+  explicit BaseRandom(const Parameters<T> &i_params)
     : m_seed(i_params.random.seed)
     , m_engine(m_seed)
     , m_phaseDist(T(0.0), TAU<T>) {
@@ -115,7 +115,7 @@ public:
     : BaseRandom<T>()
     , m_ampDist(T(0.0), T(1.0)) {}
 
-  NormalRandom(const Parameters<T> &i_params)
+  explicit NormalRandom(const Parameters<T> &i_params)
     : BaseRandom<T>(i_params)
     , m_ampDist(T(0.0), T(1.0)) {}
 
@@ -129,7 +129,7 @@ public:
   SquaredNormalRandom()
     : NormalRandom<T>() {}
 
-  SquaredNormalRandom(const Parameters<T> &i_params)
+  explicit SquaredNormalRandom(const Parameters<T> &i_params)
     : NormalRandom<T>(i_params) {}
 
   T nextAmp() { return sqr(NormalRandom<T>::nextAmp()); }
@@ -146,7 +146,7 @@ public:
     : BaseRandom<T>()
     , m_ampDist(T(1.0), T(1.0)) {}
 
-  LogNormalRandom(const Parameters<T> &i_params)
+  explicit LogNormalRandom(const Parameters<T> &i_params)
     : BaseRandom<T>(i_params)
     , m_ampDist(T(1.0), T(1.0)) {}
 
