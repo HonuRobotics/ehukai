@@ -99,6 +99,17 @@ public:
       , m_swell(params.directionalSpreading.swell) {}
 
   T operator()(T i_omega, T i_theta, T i_kMag, T i_dTheta) const {
+    T dA, dB;
+    (*this)(i_omega, i_theta, i_theta, i_kMag, i_dTheta, dA, dB);
+    return dA;
+  }
+
+  // Evaluate at two directions sharing one omega. The normalization is
+  // independent of theta, so computing it once here (instead of once per
+  // direction) halves the dominant per-point cost: for this model a
+  // 36-sample numerical integration when swell > 0.
+  void operator()(T i_omega, T i_thetaA, T i_thetaB, T /*i_kMag*/,
+                  T /*i_dTheta*/, T& o_dA, T& o_dB) const {
     T omega_over_modal_omega = i_omega / m_modalAngularFrequency;
     T beta_s;
     if (omega_over_modal_omega < 0.95) {
@@ -113,29 +124,39 @@ public:
     }
 
     // Make a hyperbolic secant function
-    static auto sech = [](T x) { return 1.0 / std::cosh(x); };
+    auto sech = [](T x) { return 1.0 / std::cosh(x); };
+    auto B    = [beta_s, sech](T x) -> T { return sqr(sech(beta_s * x)); };
 
-    // We need to do a numerical integration to determine the
-    // normalization factor for the product of the original function (B)
-    // with the swell elongation (A).
-    auto A = [this, i_omega](T x) -> T {
-      return swell(x, i_omega, m_modalAngularFrequency, m_swell);
-    };
-    auto B = [beta_s](T x) -> T { return sqr(sech(beta_s * x)); };
-
-    if (m_swell >= 0.0) {
-      return normalizedSwellDirectionalProduct(i_theta, A, B);
+    if (m_swell > 0.0) {
+      // We need to do a numerical integration to determine the
+      // normalization factor for the product of the original function (B)
+      // with the swell elongation (A).
+      auto A = [this, i_omega](T x) -> T {
+        return swell(x, i_omega, m_modalAngularFrequency, m_swell);
+      };
+      auto product = [A, B](T x) -> T { return A(x) * B(x); };
+      T denom = numericallyIntegrate(product, -PI<T> / 2, PI<T> / 2, 36);
+      o_dA = product(i_thetaA) / denom;
+      o_dB = product(i_thetaB) / denom;
+    } else if (m_swell == 0.0) {
+      // The swell elongation is identically 1 (cos^0), so the
+      // normalization over [-pi/2, pi/2] has the closed form
+      // int sech^2(beta x) dx = 2 tanh(beta pi / 2) / beta and the
+      // numerical integration can be skipped entirely.
+      T denom = T(2.0) * std::tanh(beta_s * PI<T> / 2) / beta_s;
+      o_dA = B(i_thetaA) / denom;
+      o_dB = B(i_thetaB) / denom;
     } else {
       T integral =
         (std::tanh(beta_s * PI<T>) - std::tanh(-beta_s * PI<T>)) / beta_s;
-      T d = B(i_theta) / integral;
       // Negative swell blends toward the isotropic distribution 1/(2pi),
       // exactly as the Mitsuyasu and Hasselmann spreadings do below. The
       // upstream code lerped toward -1/(2pi), which drives the spreading
       // (and with it the spectral energy) negative; the sign error was
       // masked downstream by the abs() in the amplitude computation.
-      return Imath::lerp(d, T(1) / TAU<T>,
-                         Imath::clamp(-m_swell, T(0), T(1)));
+      const T blend = Imath::clamp(-m_swell, T(0), T(1));
+      o_dA = Imath::lerp(B(i_thetaA) / integral, T(1) / TAU<T>, blend);
+      o_dB = Imath::lerp(B(i_thetaB) / integral, T(1) / TAU<T>, blend);
     }
   }
 
@@ -159,6 +180,15 @@ public:
       , m_swell(params.directionalSpreading.swell) {}
 
   T operator()(T i_omega, T i_theta, T i_kMag, T i_dTheta) const {
+    T dA, dB;
+    (*this)(i_omega, i_theta, i_theta, i_kMag, i_dTheta, dA, dB);
+    return dA;
+  }
+
+  // Evaluate at two directions sharing one omega; the shape and the
+  // tgamma-based normalization depend only on omega and are computed once.
+  void operator()(T i_omega, T i_thetaA, T i_thetaB, T /*i_kMag*/,
+                  T /*i_dTheta*/, T& o_dA, T& o_dB) const {
     T shape_bias = 0.0;
     if (m_swell >= 0.0) {
       shape_bias = swellShape(i_omega, m_modalAngularFrequency, m_swell);
@@ -177,13 +207,17 @@ public:
     T factor_A = std::pow(2.0, (2.0 * shape) - 1.0) / PI<T>;
     T factor_B =
       sqr(std::tgamma(shape + 1.0)) / std::tgamma((2.0 * shape) + 1.0);
-    T factor_C = std::pow(std::abs(std::cos(i_theta / 2.0)), 2.0 * shape);
-    if (m_swell < 0) {
-      return Imath::lerp(factor_A * factor_B * factor_C, T(1) / T(TAU<T>),
-                         Imath::clamp(-m_swell, T(0), T(1)));
-    } else {
-      return factor_A * factor_B * factor_C;
-    }
+    auto evalAt = [this, factor_A, factor_B, shape](T theta) -> T {
+      T factor_C = std::pow(std::abs(std::cos(theta / 2.0)), 2.0 * shape);
+      if (m_swell < 0) {
+        return Imath::lerp(factor_A * factor_B * factor_C, T(1) / T(TAU<T>),
+                           Imath::clamp(-m_swell, T(0), T(1)));
+      } else {
+        return factor_A * factor_B * factor_C;
+      }
+    };
+    o_dA = evalAt(i_thetaA);
+    o_dB = evalAt(i_thetaB);
   }
 
 protected:
@@ -209,6 +243,15 @@ public:
       , m_swell(params.directionalSpreading.swell) {}
 
   T operator()(T i_omega, T i_theta, T i_kMag, T i_dTheta) const {
+    T dA, dB;
+    (*this)(i_omega, i_theta, i_theta, i_kMag, i_dTheta, dA, dB);
+    return dA;
+  }
+
+  // Evaluate at two directions sharing one omega; the shape and the
+  // tgamma-based normalization depend only on omega and are computed once.
+  void operator()(T i_omega, T i_thetaA, T i_thetaB, T /*i_kMag*/,
+                  T /*i_dTheta*/, T& o_dA, T& o_dB) const {
     T shape_bias = 0.0;
     if (m_swell >= 0.0) {
       shape_bias = swellShape(i_omega, m_modalAngularFrequency, m_swell);
@@ -231,13 +274,17 @@ public:
     T factor_A = std::pow(2.0, (2.0 * shape) - 1.0) / PI<T>;
     T factor_B =
       sqr(std::tgamma(shape + 1.0)) / std::tgamma((2.0 * shape) + 1.0);
-    T factor_C = std::pow(std::abs(std::cos(i_theta / 2.0)), 2.0 * shape);
-    if (m_swell < 0) {
-      return Imath::lerp(factor_A * factor_B * factor_C, T(1) / T(TAU<T>),
-                         Imath::clamp(-m_swell, T(0), T(1)));
-    } else {
-      return factor_A * factor_B * factor_C;
-    }
+    auto evalAt = [this, factor_A, factor_B, shape](T theta) -> T {
+      T factor_C = std::pow(std::abs(std::cos(theta / 2.0)), 2.0 * shape);
+      if (m_swell < 0) {
+        return Imath::lerp(factor_A * factor_B * factor_C, T(1) / T(TAU<T>),
+                           Imath::clamp(-m_swell, T(0), T(1)));
+      } else {
+        return factor_A * factor_B * factor_C;
+      }
+    };
+    o_dA = evalAt(i_thetaA);
+    o_dB = evalAt(i_thetaB);
   }
 
 protected:
@@ -258,9 +305,16 @@ public:
       , m_swell(params.directionalSpreading.swell) {}
 
   T operator()(T i_omega, T i_theta, T i_kMag, T i_dTheta) const {
-    auto A = [this, i_omega](T x) -> T {
-      return swell(x, i_omega, m_modalAngularFrequency, m_swell);
-    };
+    T dA, dB;
+    (*this)(i_omega, i_theta, i_theta, i_kMag, i_dTheta, dA, dB);
+    return dA;
+  }
+
+  // Evaluate at two directions sharing one omega. The normalization is
+  // independent of theta, so the 36-sample numerical integration (or its
+  // closed form at swell == 0) runs once instead of once per direction.
+  void operator()(T i_omega, T i_thetaA, T i_thetaB, T /*i_kMag*/,
+                  T /*i_dTheta*/, T& o_dA, T& o_dB) const {
     auto B = [](T x) -> T {
       if (x < -PI_2<T> || x > PI_2<T>) {
         return T{0};
@@ -269,7 +323,21 @@ public:
       }
     };
 
-    return normalizedSwellDirectionalProduct(i_theta, A, B);
+    if (m_swell == 0.0) {
+      // The swell elongation is identically 1 (cos^0) and
+      // int cos^2 over [-pi/2, pi/2] is exactly pi/2, so the numerical
+      // integration can be skipped entirely.
+      o_dA = B(i_thetaA) / PI_2<T>;
+      o_dB = B(i_thetaB) / PI_2<T>;
+    } else {
+      auto A = [this, i_omega](T x) -> T {
+        return swell(x, i_omega, m_modalAngularFrequency, m_swell);
+      };
+      auto product = [A, B](T x) -> T { return A(x) * B(x); };
+      T denom = numericallyIntegrate(product, -PI<T> / 2, PI<T> / 2, 36);
+      o_dA = product(i_thetaA) / denom;
+      o_dB = product(i_thetaB) / denom;
+    }
   }
 
 protected:

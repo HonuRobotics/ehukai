@@ -108,6 +108,7 @@ int main()
     bool allFinite = true;
     bool isotropicAtFullNegativeSwell = true;
     bool integralsUnit = true;
+    bool pairMatchesSingle = true;
 
     for (double swellAmount : swells)
     {
@@ -126,6 +127,17 @@ int main()
           if (hasIsotropicBlend && swellAmount == -1.0 &&
               std::abs(d - isotropic) > 1e-9)
             isotropicAtFullNegativeSwell = false;
+
+          // The two-direction overload must agree with two single
+          // evaluations (guards against swapped or asymmetric outputs).
+          if (i % 60 == 0)
+          {
+            double pa = 0.0, pb = 0.0;
+            D(omega, theta, -theta, 1.0, 0.01, pa, pb);
+            if (std::abs(pa - d) > 1e-12 ||
+                std::abs(pb - D(omega, -theta, 1.0, 0.01)) > 1e-12)
+              pairMatchesSingle = false;
+          }
         }
 
         if (checkIntegral(swellAmount))
@@ -147,6 +159,8 @@ int main()
       demand(isotropicAtFullNegativeSwell,
              name + ": swell = -1 gives the isotropic 1/(2pi)");
     demand(integralsUnit, name + ": normalized integrals are ~1");
+    demand(pairMatchesSingle,
+           name + ": pair overload agrees with single evaluations");
   };
 
   testSpreading(
