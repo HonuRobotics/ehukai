@@ -167,6 +167,46 @@ int main()  // NOLINT(bugprone-exception-escape): a throwing ctor is a test fail
   demand(eStats.min < 1.0f,
          "MinE has cells below 1.0 (compression seen)");
 
+  // ---- Scenario 2: trough damping enabled --------------------------------
+  // troughDamping > 0 exercises the entire second half of propagate():
+  // the band-pass filter, the filtered-derivative FFTs, the Stats reduction,
+  // and the MinE-driven interpolant blending. Previously uncovered.
+  std::cout << "\nrunning propagate(t=0.0) with troughDamping = 0.8 ...\n";
+  Parameters<float> dampedParams = params;
+  dampedParams.troughDamping = 0.8f;
+  PropagatedStatef dampedState(dampedParams);
+  propagation.propagate(dampedParams, istate, dampedState, 0.0f);
+  std::cout << "  done\n\n";
+
+  const auto hdStats  = Summarise(dampedState.Height.cdata(), cellCount);
+  const auto dxdStats = Summarise(dampedState.Dx.cdata(),     cellCount);
+  const auto dydStats = Summarise(dampedState.Dy.cdata(),     cellCount);
+  const auto edStats  = Summarise(dampedState.MinE.cdata(),   cellCount);
+
+  std::cout << "damped output stats:\n";
+  PrintStats("Height",  hdStats);
+  PrintStats("Dx",      dxdStats);
+  PrintStats("Dy",      dydStats);
+  PrintStats("MinE",    edStats);
+  std::cout << "\n";
+
+  demand(hdStats.allFinite,  "damped Height: all values finite");
+  demand(dxdStats.allFinite, "damped Dx: all values finite");
+  demand(dydStats.allFinite, "damped Dy: all values finite");
+  demand(edStats.allFinite,  "damped MinE: all values finite");
+
+  float maxHeightDiff = 0.0f;
+  for (std::size_t i = 0; i < cellCount; ++i)
+  {
+    const float d =
+        std::abs(dampedState.Height.cdata()[i] - pstate.Height.cdata()[i]);
+    if (d > maxHeightDiff) maxHeightDiff = d;
+  }
+  demand(maxHeightDiff > 1e-5f,
+         "trough damping actually changes the height field");
+  demand(hdStats.rms > 0.2f * hStats.rms && hdStats.rms < 1.5f * hStats.rms,
+         "damped heights stay the same order of magnitude");
+
   std::cout << "\nresult: " << (ok ? "PASS" : "FAIL") << "\n";
   return ok ? 0 : 1;
 }
