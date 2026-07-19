@@ -14,8 +14,6 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_EXTENSIONS OFF)
 endif()
 
-# Upstream code: partial template instantiation leaves some statics unused.
-add_compile_options(-Wno-unused-function)
 
 # ---- optional sanitizer build (-DSANITIZE=address|thread|undefined) ----
 # Applied to every target (library, tests, benchmark). `address` also turns on
