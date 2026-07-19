@@ -46,6 +46,11 @@
 namespace EncinoWaves {
 
 //-*****************************************************************************
+//! Per-frame spatial output grids: the surface Height, the lateral (chop)
+//! displacements Dx/Dy, and MinE — the smaller eigenvalue of the pinch
+//! Jacobian, which dips below 0 where the surface folds (a foam /
+//! compression indicator). All grids are (N+1) x (N+1): the extra wrapped
+//! border row/column makes the tile seamlessly periodic.
 template <typename T> struct PropagatedState {
   RealSpatialField2D<T> Height;
   RealSpatialField2D<T> Dx;
@@ -64,6 +69,10 @@ template <typename T> struct PropagatedState {
 };
 
 //-*****************************************************************************
+//! Reusable per-frame working state: spectral scratch buffers, the
+//! filtered-height buffers for trough damping, and the inverse-FFT plan.
+//! Construct once (alongside an InitialState) and call propagate() with an
+//! increasing time each frame.
 template <typename T> struct Propagation {
   ComplexSpectralField2D<T> HSpec;
   ComplexSpectralField2D<T> TempSpec;
@@ -90,6 +99,10 @@ template <typename T> struct Propagation {
         FiltMinE(i_params.resolutionPowerOfTwo, 1),
         Converter(HSpec, TempSpat, i_nthreads), Domain(i_params.domain) {}
 
+  //! Evolves i_istate to time i_time (seconds) and fills o_pstate's
+  //! Height / Dx / Dy / MinE grids. When i_params.troughDamping > 0 an
+  //! additional band-filtered pass attenuates wave troughs (at the cost of
+  //! roughly twice the FFT work).
   void propagate(const Parameters<T> &i_params, const InitialState<T> &i_istate,
                  PropagatedState<T> &o_pstate, T i_time);
 };

@@ -48,6 +48,12 @@
 namespace EncinoWaves {
 
 //-*****************************************************************************
+//! The one-shot spectral initial state of an ocean: the forward and
+//! backward complex amplitudes h0+(k) / h0-(k) and the angular frequency
+//! omega(k), evaluated at every point of the (N/2+1) x N hermitian
+//! spectral grid from the configured dispersion, spectrum, directional
+//! spreading, filter, and random draws. Construct once per parameter set;
+//! Propagation evolves it in time.
 template <typename T>
 struct InitialState {
   ComplexSpectralField2D<T> HSpectralPos;

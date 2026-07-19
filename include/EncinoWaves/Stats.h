@@ -162,6 +162,8 @@ T ParallelStdDev(T i_mean, const T* i_values, std::size_t i_size) {
 }
 
 //-*****************************************************************************
+//! Parallel summary statistics of a propagated frame: Height min/max/mean
+//! and MinE mean/stddev (the inputs to the trough-damping interpolant).
 template <typename T>
 struct Stats {
   T MinHeight;

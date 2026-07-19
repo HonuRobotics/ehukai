@@ -96,6 +96,9 @@ struct ComputeNormalsWithPinching {
 };
 
 //-*****************************************************************************
+//! Computes per-vertex normals of the displaced (pinched) surface into
+//! o_normals, an (N+1) x (N+1) row-major array matching the padded
+//! PropagatedState grids.
 template <typename T>
 void ComputeNormals(const Parameters<T>& i_params,
                     const PropagatedState<T>& i_waves,

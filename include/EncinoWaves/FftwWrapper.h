@@ -191,6 +191,11 @@ struct FftwWrapperT
 
   // Bound TBB's worker concurrency for subsequent execute() calls, mirroring
   // FFTW's plan_with_nthreads. n <= 0 restores the TBB default (all cores).
+  // NOT thread-safe: this swaps a process-global tbb::global_control, so do
+  // not call it concurrently with itself or with any execute(); set it up
+  // once before parallel work begins (converter constructors call it, so
+  // construct converters from one thread). This matches FFTW's own contract,
+  // where planner calls must not race with execution.
   static void plan_with_nthreads(int i_nthreads)
   {
     if (i_nthreads <= 0)

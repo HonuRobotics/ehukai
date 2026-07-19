@@ -160,7 +160,9 @@ struct DownsampleFunc {
 };
 
 //-*****************************************************************************
-// Apply Mip Map functor to downsample one Spatial Field to another.
+//! Downsamples one spatial field into another of half the (unpadded)
+//! resolution with the periodic 4x4 kernel, then refreshes the wrapped
+//! border. Both fields must be square with pad 1.
 template <typename T>
 void Downsample(const RealSpatialField2D<T>& i_src,
                 RealSpatialField2D<T>& o_dst) {
@@ -194,7 +196,8 @@ void Downsample(const RealSpatialField2D<T>& i_src,
 }
 
 //-*****************************************************************************
-// Apply a Mip Map functor to downsample one Propagated State to another.
+//! Downsamples every grid of a PropagatedState (Height, Dx, Dy, MinE) into
+//! a half-resolution state, e.g. to build LOD chains.
 template <typename T>
 void DownsampleState(const PropagatedState<T>& i_src,
                      PropagatedState<T>& o_dst) {
