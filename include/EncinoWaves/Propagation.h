@@ -348,7 +348,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     F.Omega = i_istate.Omega.cdata();
     F.HSpecProp = HSpec.data();
     F.Time = i_time;
-    SpectralIterationFunctor<T, HSPEC<T>, HSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Make DxxSpec from Hspec
@@ -356,7 +356,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DXXSPEC<T> F;
     F.HSpecProp = HSpec.cdata();
     F.DxxSpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DXXSPEC<T>, DXXSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute Dxx, temporarily put into Dx.
@@ -367,7 +367,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DYYSPEC<T> F;
     F.HSpecProp = HSpec.cdata();
     F.DyySpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DYYSPEC<T>, DYYSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute Dyy, temporarily put into Dy.
@@ -378,7 +378,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DXYSPEC<T> F;
     F.HSpecProp = HSpec.cdata();
     F.DxySpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DXYSPEC<T>, DXYSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute Dxy, temporarily put into MinE.
@@ -399,7 +399,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DXSPEC<T> F;
     F.HSpecProp = HSpec.cdata();
     F.DxSpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DXSPEC<T>, DXSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute Dx
@@ -410,7 +410,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DYSPEC<T> F;
     F.HSpecProp = HSpec.cdata();
     F.DySpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DYSPEC<T>, DYSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute Dy
@@ -435,7 +435,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     F.Filter = &filter;
     F.HSpecProp = HSpec.cdata();
     F.HFiltSpecProp = HFiltSpec.data();
-    SpectralIterationFunctor<T, HFILTSPEC<T>, HFILTSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute H.
@@ -446,7 +446,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DXXSPEC<T> F;
     F.HSpecProp = HFiltSpec.cdata();
     F.DxxSpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DXXSPEC<T>, DXXSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute FiltDxx, temporarily put into FiltDx.
@@ -457,7 +457,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DYYSPEC<T> F;
     F.HSpecProp = HFiltSpec.cdata();
     F.DyySpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DYYSPEC<T>, DYYSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute FiltDyy, temporarily put into FiltDy.
@@ -468,7 +468,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DXYSPEC<T> F;
     F.HSpecProp = HFiltSpec.cdata();
     F.DxySpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DXYSPEC<T>, DXYSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute FiltDxy, temporarily put into FiltMinE.
@@ -489,7 +489,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DXSPEC<T> F;
     F.HSpecProp = HFiltSpec.cdata();
     F.DxSpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DXSPEC<T>, DXSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute FiltDx
@@ -500,7 +500,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DYSPEC<T> F;
     F.HSpecProp = HFiltSpec.cdata();
     F.DySpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DYSPEC<T>, DYSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute FiltDy

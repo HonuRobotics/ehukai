@@ -172,6 +172,17 @@ T vp_from_lambda_and_T(T i_lambda, T i_T) {
 //-*****************************************************************************
 
 //-*****************************************************************************
+//! Parallel sweep over every point of an N x (N/2+1) spectral grid. A
+//! PROCESSOR is copied from STATE once per TBB task and invoked with either
+//! the DC index (for the k = 0 point) or (k vector, |k|, dK, index) for
+//! every other point. Use the SpectralIterate() helpers below; historically
+//! this class ran the sweep from its constructor, leaving call sites
+//! constructing apparently unused objects.
+//!
+//! A PROCESSOR that throws (e.g. via EWAV_ASSERT) does so on a TBB worker
+//! thread; TBB cancels the sweep and rethrows toward the caller, but
+//! depending on the TBB version the exception can arrive rewrapped (e.g. as
+//! tbb::captured_exception) instead of the original type.
 template <typename T, typename STATE, typename PROCESSOR>
 class SpectralIterationFunctor {
 public:
@@ -188,19 +199,17 @@ protected:
   real_type m_dK;
 
 public:
-  // Constructor.
   SpectralIterationFunctor(const STATE* i_state, real_type i_domain, int i_N)
       : m_state(i_state)
       , m_domain(i_domain)
-      , N(i_N) {
-    int width  = (N / 2) + 1;
-    int height = N;
+      , N(i_N)
+      , m_strideJ(std::size_t(i_N / 2) + 1)
+      , m_dK(real_type(1) * TAU<T> / i_domain) {}
 
-    // Constants
-    m_strideJ = (N / 2) + 1;
-    m_dK      = real_type(1) * TAU<T> / m_domain;
-
-    // Execute it!
+  //! Runs the sweep.
+  void run() const {
+    int width     = (N / 2) + 1;
+    int height    = N;
     int grainSize = std::min(512, N);
     tbb::parallel_for(
       tbb::blocked_range2d<int>(0, height, 1, 0, width, grainSize), *this);
@@ -236,6 +245,22 @@ public:
     }
   }
 };
+
+//-*****************************************************************************
+//! Runs PROCESSOR (constructed from i_state per task) over the spectral
+//! grid. Use this overload when the processor type differs from STATE.
+template <typename PROCESSOR, typename T, typename STATE>
+void SpectralIterate(const STATE& i_state, T i_domain, int i_N) {
+  SpectralIterationFunctor<T, STATE, PROCESSOR> functor(&i_state, i_domain,
+                                                        i_N);
+  functor.run();
+}
+
+//! Common case: STATE doubles as its own PROCESSOR.
+template <typename T, typename STATE>
+void SpectralIterate(const STATE& i_state, T i_domain, int i_N) {
+  SpectralIterate<STATE, T, STATE>(i_state, i_domain, i_N);
+}
 
 }  // namespace EncinoWaves
 

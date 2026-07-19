@@ -265,7 +265,7 @@ void ExecuteRange(const DISPERSION& i_dispersion, const SPECTRUM& i_spectrum,
 
   // Spectral Iterate.
   int N = o_state.HSpectralPos.height();
-  { SpectralIterationFunctor<T, F_type, P_type> iter(&F, i_domain, N); }
+  SpectralIterate<P_type>(F, i_domain, N);
 };
 
 //-*****************************************************************************
