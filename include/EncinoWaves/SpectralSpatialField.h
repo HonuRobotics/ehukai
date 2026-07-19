@@ -288,8 +288,8 @@ protected:
 //-*****************************************************************************
 template <typename T>
 struct CopyWrappedBorder {
-  T* Data;
-  int N;
+  T* Data = nullptr;
+  int N = 0;
 
   void operator()(const tbb::blocked_range<int>& i_rows) const {
     std::size_t stride = N + 1;

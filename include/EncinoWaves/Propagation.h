@@ -77,7 +77,7 @@ template <typename T> struct Propagation {
 
   SpectralToPaddedSpatial2D<T> Converter;
 
-  T Domain;
+  T Domain = T(0);
 
   explicit Propagation(const Parameters<T> &i_params, int i_nthreads = -1)
       : HSpec(i_params.resolutionPowerOfTwo),
@@ -117,13 +117,13 @@ template <typename T> struct HSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const complex_type *HSpecPos;
-  const complex_type *HSpecNeg;
-  const real_type *Omega;
+  const complex_type *HSpecPos = nullptr;
+  const complex_type *HSpecNeg = nullptr;
+  const real_type *Omega = nullptr;
 
-  complex_type *HSpecProp;
+  complex_type *HSpecProp = nullptr;
 
-  real_type Time;
+  real_type Time = real_type(0);
 
   void operator()(std::size_t i_index) {
     HSpecProp[i_index] = complex_type(0.0, 0.0);
@@ -154,8 +154,8 @@ template <typename T> struct DXSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const complex_type *HSpecProp;
-  complex_type *DxSpecProp;
+  const complex_type *HSpecProp = nullptr;
+  complex_type *DxSpecProp = nullptr;
 
   void operator()(std::size_t i_index) {
     DxSpecProp[i_index] = complex_type(0.0, 0.0);
@@ -176,8 +176,8 @@ template <typename T> struct DYSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const complex_type *HSpecProp;
-  complex_type *DySpecProp;
+  const complex_type *HSpecProp = nullptr;
+  complex_type *DySpecProp = nullptr;
 
   void operator()(std::size_t i_index) {
     DySpecProp[i_index] = complex_type(0.0, 0.0);
@@ -196,8 +196,8 @@ template <typename T> struct DXXSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const complex_type *HSpecProp;
-  complex_type *DxxSpecProp;
+  const complex_type *HSpecProp = nullptr;
+  complex_type *DxxSpecProp = nullptr;
 
   void operator()(std::size_t i_index) {
     DxxSpecProp[i_index] = complex_type(0.0, 0.0);
@@ -216,8 +216,8 @@ template <typename T> struct DYYSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const complex_type *HSpecProp;
-  complex_type *DyySpecProp;
+  const complex_type *HSpecProp = nullptr;
+  complex_type *DyySpecProp = nullptr;
 
   void operator()(std::size_t i_index) {
     DyySpecProp[i_index] = complex_type(0.0, 0.0);
@@ -236,8 +236,8 @@ template <typename T> struct DXYSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const complex_type *HSpecProp;
-  complex_type *DxySpecProp;
+  const complex_type *HSpecProp = nullptr;
+  complex_type *DxySpecProp = nullptr;
 
   void operator()(std::size_t i_index) {
     DxySpecProp[i_index] = complex_type(0.0, 0.0);
@@ -252,10 +252,10 @@ template <typename T> struct DXYSPEC {
 
 //-*****************************************************************************
 template <typename T> struct ComputeMinE {
-  const T *Dxx;
-  const T *Dyy;
-  T *Dxy_and_MinE;
-  T Pinch;
+  const T *Dxx = nullptr;
+  const T *Dyy = nullptr;
+  T *Dxy_and_MinE = nullptr;
+  T Pinch = T(0);
 
   void operator()(const tbb::blocked_range<std::size_t> &i_range) const {
     for (std::size_t i = i_range.begin(); i != i_range.end(); ++i) {
@@ -277,10 +277,10 @@ template <typename T> struct HFILTSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const SmoothInvertibleBandPassFilter<T> *Filter;
+  const SmoothInvertibleBandPassFilter<T> *Filter = nullptr;
 
-  const complex_type *HSpecProp;
-  complex_type *HFiltSpecProp;
+  const complex_type *HSpecProp = nullptr;
+  complex_type *HFiltSpecProp = nullptr;
 
   void operator()(std::size_t i_index) {
     HFiltSpecProp[i_index] = HSpecProp[i_index];
@@ -294,12 +294,12 @@ template <typename T> struct HFILTSPEC {
 
 //-*****************************************************************************
 template <typename T> struct ConvertMinEToInterpolant {
-  T GainMinE;
-  T BiasMinE;
-  T MinClipE;
-  T MaxClipE;
-  T MinInterpolant;
-  T *MinE_And_Interpolant;
+  T GainMinE = T(0);
+  T BiasMinE = T(0);
+  T MinClipE = T(0);
+  T MaxClipE = T(0);
+  T MinInterpolant = T(0);
+  T *MinE_And_Interpolant = nullptr;
 
   void operator()(const tbb::blocked_range<std::size_t> &i_range) const {
     for (std::size_t i = i_range.begin(); i != i_range.end(); ++i) {
@@ -314,9 +314,9 @@ template <typename T> struct ConvertMinEToInterpolant {
 
 //-*****************************************************************************
 template <typename T> struct InterpolateIntoB {
-  const T *A;
-  T *B;
-  const T *Interpolant;
+  const T *A = nullptr;
+  T *B = nullptr;
+  const T *Interpolant = nullptr;
 
   void operator()(const tbb::blocked_range<std::size_t> &i_range) const {
     for (std::size_t i = i_range.begin(); i != i_range.end(); ++i) {

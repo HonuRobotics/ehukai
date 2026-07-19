@@ -121,13 +121,13 @@ struct DownsampleFunc {
   typedef T value_type;
   typedef DownsampleFunc<T> this_type;
 
-  const T* Src;
-  int SrcN;
-  int SrcStrideJ;
+  const T* Src = nullptr;
+  int SrcN = 0;
+  int SrcStrideJ = 0;
 
-  T* Dst;
-  int DstN;
-  int DstStrideJ;
+  T* Dst = nullptr;
+  int DstN = 0;
+  int DstStrideJ = 0;
 
   void processDstLine(int j) const {
     int srcJ = j * 2;

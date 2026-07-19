@@ -75,20 +75,20 @@ struct InitialStateHelper {
                              FILTER, RANDOM, T> this_type;
 
   // Functional configuration
-  const DISPERSION* Dispersion;
-  const SPECTRUM* Spectrum;
-  const DIRECTIONAL_SPREADING* DirectionalSpreading;
-  const FILTER* Filter;
-  const RANDOM* Random;
+  const DISPERSION* Dispersion = nullptr;
+  const SPECTRUM* Spectrum = nullptr;
+  const DIRECTIONAL_SPREADING* DirectionalSpreading = nullptr;
+  const FILTER* Filter = nullptr;
+  const RANDOM* Random = nullptr;
 
   // Arrays
-  complex_type* HSpectralPos;
-  complex_type* HSpectralNeg;
-  real_type* Omega;
+  complex_type* HSpectralPos = nullptr;
+  complex_type* HSpectralNeg = nullptr;
+  real_type* Omega = nullptr;
 
   // Info
-  real_type RhoG;
-  real_type Domain;
+  real_type RhoG = real_type(0);
+  real_type Domain = real_type(0);
 
   // Little processor object that is run at each point.
   struct Processor {

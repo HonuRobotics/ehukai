@@ -119,7 +119,7 @@ public:
   JONSWAPSpectrum() { init(9.81, 10.0, 100.0, 3.30); }
 
   explicit JONSWAPSpectrum(const Parameters<T>& i_params) {
-    Rand48_Engine r48;
+    RandomEngine r48;
     // Gamma draw per the distribution documented above: mean 3.30,
     // variance 0.62 (std::normal_distribution takes the standard
     // deviation, hence the sqrt). The historical 0.67 disagreed with the
