@@ -24,6 +24,8 @@ jobs:
             ca-certificates git cmake build-essential \
             libeigen3-dev libtbb-dev libimath-dev lintian file
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Build and package
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
