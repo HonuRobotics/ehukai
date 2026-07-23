@@ -2,9 +2,6 @@ name: Release
 on:
   push:
     tags: [ 'v*' ]
-# Least privilege by default: the build matrix needs no write scope (artifacts
-# use the Actions runtime token). Only the publish job elevates to contents:
-# write, below, to create the GitHub Release.
 permissions:
   contents: read
 jobs:
