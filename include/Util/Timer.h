@@ -14,62 +14,47 @@
 // limitations under the License.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_Util_Timer_h_
-#define _EncinoWaves_Util_Timer_h_
+#ifndef ENCINOWAVES_UTIL_TIMER_H
+#define ENCINOWAVES_UTIL_TIMER_H
 
 #include "Foundation.h"
+
+#include <chrono>
 
 namespace EncinoWaves {
 namespace Util {
 
 //-*****************************************************************************
-//! \brief Basic real-time stopwatch. Returns elapsed time in seconds.
+//! \brief Basic real-time stopwatch on the monotonic clock. Returns elapsed
+//! time in seconds.
 class Timer {
 public:
+  //! Creates a timer which is started by default
+  Timer() { start(); }
+
   //! Begins the timer and resets the elapsed time to zero
   void start() {
-    struct timezone tz;
-    gettimeofday(&m_tp0, &tz);
-    m_stopped = -1;
-  }
-
-  //! Creates a timer which is started by default
-  Timer()
-    : m_stopped(-1) {
-    start();
+    m_start   = Clock::now();
+    m_stopped = -1.0;
   }
 
   //! Stops the timer and records elapsed time
-  double stop() {
-    struct timezone tz;
-    struct timeval tp;
-    gettimeofday(&tp, &tz);
-
-    double seconds = tp.tv_sec - m_tp0.tv_sec;
-    seconds += double(tp.tv_usec) * 1e-6;
-    seconds -= double(m_tp0.tv_usec) * 1e-6;
-    return (m_stopped = double(seconds));
-  }
+  double stop() { return (m_stopped = secondsSinceStart()); }
 
   //! Returns the amount of time elapsed.
   double elapsed() const {
-    if (m_stopped >= 0.0) {
-      return m_stopped;
-    }
-
-    struct timezone tz;
-    struct timeval tp;
-    gettimeofday(&tp, &tz);
-
-    double seconds = tp.tv_sec - m_tp0.tv_sec;
-    seconds += double(tp.tv_usec) * 1e-6;
-    seconds -= double(m_tp0.tv_usec) * 1e-6;
-    return double(seconds);
+    return (m_stopped >= 0.0) ? m_stopped : secondsSinceStart();
   }
 
 private:
-  double m_stopped;
-  struct timeval m_tp0;
+  using Clock = std::chrono::steady_clock;
+
+  double secondsSinceStart() const {
+    return std::chrono::duration<double>(Clock::now() - m_start).count();
+  }
+
+  Clock::time_point m_start;
+  double m_stopped = -1.0;
 };
 
 }  // namespace Util

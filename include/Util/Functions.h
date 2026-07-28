@@ -14,8 +14,8 @@
 // limitations under the License.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_Util_Functions_h_
-#define _EncinoWaves_Util_Functions_h_
+#ifndef ENCINOWAVES_UTIL_FUNCTIONS_H
+#define ENCINOWAVES_UTIL_FUNCTIONS_H
 
 #include "Foundation.h"
 

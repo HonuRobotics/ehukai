@@ -32,8 +32,8 @@
 // Los Angeles, Aug. 8, 2015, pp. 29-39.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_SpectralSpatialField_h_
-#define _EncinoWaves_SpectralSpatialField_h_
+#ifndef ENCINOWAVES_SPECTRALSPATIALFIELD_H
+#define ENCINOWAVES_SPECTRALSPATIALFIELD_H
 
 #include "Foundation.h"
 #include "FftwWrapper.h"

@@ -14,9 +14,7 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_EXTENSIONS OFF)
 endif()
 
-# Upstream code: partial template instantiation leaves some statics unused;
-# the EWAV_* macro redefinitions are fixed at source with #undefs in
-# EncinoWaves/Exception.h.
+# Upstream code: partial template instantiation leaves some statics unused.
 add_compile_options(-Wno-unused-function)
 
 # ---- optional sanitizer build (-DSANITIZE=address|thread|undefined) ----
@@ -61,7 +59,6 @@ find_package(Imath  ${EW_IMATH_MIN}  REQUIRED)            # BSD-3 math types
 
 add_library(${PROJECT_NAME} SHARED
   src/Foundation.cpp
-  src/Exception.cpp
   src/util/Exception.cpp)
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 

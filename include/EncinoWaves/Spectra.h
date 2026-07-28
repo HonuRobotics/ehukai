@@ -32,8 +32,8 @@
 // Los Angeles, Aug. 8, 2015, pp. 29-39.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_Spectra_h_
-#define _EncinoWaves_Spectra_h_
+#ifndef ENCINOWAVES_SPECTRA_H
+#define ENCINOWAVES_SPECTRA_H
 
 #include "Foundation.h"
 #include "Parameters.h"
@@ -111,7 +111,7 @@ protected:
 
     m_dimensionlessFetch = std::abs(m_gravity * m_fetch / sqr(m_windSpeed));
     m_alpha              = 0.076 * std::pow(m_dimensionlessFetch, T(-0.22));
-    m_peakOmega = M_TAU * 3.5 * std::abs(m_gravity / m_windSpeed) *
+    m_peakOmega = TAU<T> * 3.5 * std::abs(m_gravity / m_windSpeed) *
                   std::pow(m_dimensionlessFetch, T(-0.33));
   }
 

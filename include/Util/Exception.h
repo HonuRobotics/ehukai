@@ -14,79 +14,44 @@
 // limitations under the License.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_Util_Exception_h_
-#define _EncinoWaves_Util_Exception_h_
+#ifndef ENCINOWAVES_UTIL_EXCEPTION_H
+#define ENCINOWAVES_UTIL_EXCEPTION_H
 
 #include "Foundation.h"
+
+#include <stdexcept>
 
 namespace EncinoWaves {
 namespace Util {
 
 //-*****************************************************************************
-//! Base class for all exceptions in the Emld libraries. Derived
-//! from both std::exception and std::string, publicly
-//! It is mostly commonly thrown using the macros
-class Exception : public std::string, public std::exception {
+//! Base class for all exceptions in the EncinoWaves libraries. It is most
+//! commonly thrown using the EWAV_THROW and EWAV_ASSERT macros below.
+class Exception : public std::runtime_error {
 public:
-  //! default constructor creates exception with
-  //! empty message string
-  Exception() throw()
-    : std::string("")
-    , std::exception() {}
+  //! Creates an exception with an empty message string.
+  Exception()
+    : std::runtime_error("") {}
 
-  //!  Creates exception with an explicit message string.
-  //! ...
-  explicit Exception(const std::string &str) throw()
-    : std::string(str)
-    , std::exception() {}
-
-  //!  Copies exception.
-  //! ...
-  Exception(const Exception &exc) throw()
-    : std::string(exc.c_str())
-    , std::exception() {}
-
-  //!  Destructor is empty, but virtual to support polymorphic
-  //! destruction of data in any derived classes.
-  virtual ~Exception() throw() {}
-
-  //!  Inherited from std::exception, this returns a non-modifiable
-  //! character string describing the nature of the exception
-  virtual const char *what() const throw() { return c_str(); }
+  //! Creates an exception with an explicit message string.
+  explicit Exception(const std::string &str)
+    : std::runtime_error(str) {}
 };
 
 //-*****************************************************************************
-// This is for aborting in a debug mode to make a more traceable stack.
-
-#ifdef PLATFORM_DARWIN
-
-#if defined __cplusplus
-#define __EWAV_DEBUG_ASSERT_VOID_CAST static_cast<void>
-#else
-#define __EWAV_DEBUG_ASSERT_VOID_CAST (void)
-#endif
-
-#else
-
-#if defined __cplusplus && __GNUC_PREREQ(2, 95)
-#define __EWAV_DEBUG_ASSERT_VOID_CAST static_cast<void>
-#else
-#define __EWAV_DEBUG_ASSERT_VOID_CAST (void)
-#endif
-
-#endif
-
-extern void __EWAV_DEBUG_ASSERT_FAIL(const char *msg) throw();
+//! Prints the message to stderr and aborts. Used by the DEBUG assert
+//! variants so a failed assertion leaves a traceable stack.
+[[noreturn]] void EwavDebugAssertFail(const char *msg) noexcept;
 
 //-*****************************************************************************
 // This macro will cause an abort.
-#define EWAV_FAIL(TEXT)                                              \
-  do {                                                               \
-    std::stringstream sstr;                                          \
-    sstr << TEXT;                                                    \
-    sstr << "\nFile: " << __FILE__ << std::endl                      \
-         << "Line: " << __LINE__ << std::endl;                       \
-    EncinoWaves::Util::__EWAV_DEBUG_ASSERT_FAIL(sstr.str().c_str()); \
+#define EWAV_FAIL(TEXT)                                        \
+  do {                                                         \
+    std::stringstream sstr;                                    \
+    sstr << TEXT;                                              \
+    sstr << "\nFile: " << __FILE__ << std::endl                \
+         << "Line: " << __LINE__ << std::endl;                 \
+    EncinoWaves::Util::EwavDebugAssertFail(sstr.str().c_str()); \
   } while (0)
 
 //-*****************************************************************************
@@ -128,7 +93,7 @@ extern void __EWAV_DEBUG_ASSERT_FAIL(const char *msg) throw();
     }                           \
   } while (0)
 
-#define EWAV_DEBUG_ASSERT(COND, TEXT) (__EWAV_DEBUG_ASSERT_VOID_CAST(0))
+#define EWAV_DEBUG_ASSERT(COND, TEXT) (static_cast<void>(0))
 
 #endif
 

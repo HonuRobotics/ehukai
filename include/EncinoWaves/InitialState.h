@@ -32,8 +32,8 @@
 // Los Angeles, Aug. 8, 2015, pp. 29-39.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_InitialState_h_
-#define _EncinoWaves_InitialState_h_
+#ifndef ENCINOWAVES_INITIALSTATE_H
+#define ENCINOWAVES_INITIALSTATE_H
 
 #include "Foundation.h"
 #include "SpectralSpatialField.h"

@@ -32,8 +32,8 @@
 // Los Angeles, Aug. 8, 2015, pp. 29-39.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_Filter_h_
-#define _EncinoWaves_Filter_h_
+#ifndef ENCINOWAVES_FILTER_H
+#define ENCINOWAVES_FILTER_H
 
 #include "Foundation.h"
 #include "Parameters.h"
@@ -78,7 +78,7 @@ public:
       , m_min(1.0)
       , m_invert(false) {}
 
-  SmoothInvertibleBandPassFilter(const Parameters<T>& i_params)
+  explicit SmoothInvertibleBandPassFilter(const Parameters<T>& i_params)
       : m_edge0(i_params.filter.smallWavelength - i_params.filter.softWidth)
       , m_edge1(i_params.filter.smallWavelength)
       , m_edge2(i_params.filter.bigWavelength)

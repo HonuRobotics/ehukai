@@ -32,8 +32,8 @@
 // Los Angeles, Aug. 8, 2015, pp. 29-39.
 //-*****************************************************************************
 
-#ifndef _EncinoWaves_Basics_h_
-#define _EncinoWaves_Basics_h_
+#ifndef ENCINOWAVES_BASICS_H
+#define ENCINOWAVES_BASICS_H
 
 #include "Foundation.h"
 
@@ -51,11 +51,6 @@ constexpr T PI_2 = PI<T> / 2;
 // Wave stuff is easier with Tau (2Pi) than it is with Pi.
 //-*****************************************************************************
 //-*****************************************************************************
-#ifndef M_TAU
-// This is 2.0 * M_PI, to same number of significant digits.
-#define M_TAU 6.28318530717958647693
-#endif
-
 template <typename T>
 constexpr T TAU = 2 * PI<T>;
 
