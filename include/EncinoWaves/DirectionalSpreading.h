@@ -93,7 +93,7 @@ T modalAngularFrequencyJONSWAP(T gravity, T meanWindSpeed, T fetchKm) {
 template <typename T>
 class DonelanBannerDirectionalSpreading {
 public:
-  DonelanBannerDirectionalSpreading(const Parameters<T>& params)
+  explicit DonelanBannerDirectionalSpreading(const Parameters<T>& params)
       : m_modalAngularFrequency(modalAngularFrequencyJONSWAP(
           params.gravity, params.windSpeed, params.fetch))
       , m_swell(params.directionalSpreading.swell) {}
@@ -166,10 +166,13 @@ protected:
 };
 
 //------------------------------------------------------------------------------
+// Shared machinery for the cos^(2*shape)(theta/2) spreadings: Mitsuyasu and
+// Hasselmann differ only in their base shape formula, provided by the derived
+// class; the swell bias and the normalized evaluation live here.
 template <typename T>
-class MitsuyasuDirectionalSpreading {
-public:
-  MitsuyasuDirectionalSpreading(const Parameters<T>& params)
+class CosPowerDirectionalSpreadingBase {
+protected:
+  explicit CosPowerDirectionalSpreadingBase(const Parameters<T>& params)
       : m_modalAngularFrequency(modalAngularFrequencyJONSWAP(
           params.gravity, params.windSpeed, params.fetch))
       , m_modalShape(11.5 * std::pow(m_modalAngularFrequency *
@@ -179,26 +182,15 @@ public:
       , m_windSpeedOverCelerity(params.windSpeed / m_modalCelerity)
       , m_swell(params.directionalSpreading.swell) {}
 
-  T operator()(T i_omega, T i_theta, T i_kMag, T i_dTheta) const {
-    T dA, dB;
-    (*this)(i_omega, i_theta, i_theta, i_kMag, i_dTheta, dA, dB);
-    return dA;
-  }
-
-  // Evaluate at two directions sharing one omega; the shape and the
+  // Adds the swell bias to the model's base shape, then evaluates the
+  // normalized distribution at two directions. The shape and the
   // tgamma-based normalization depend only on omega and are computed once.
-  void operator()(T i_omega, T i_thetaA, T i_thetaB, T /*i_kMag*/,
-                  T /*i_dTheta*/, T& o_dA, T& o_dB) const {
-    T shape_bias = 0.0;
+  void evaluatePair(T i_omega, T i_baseShape, T i_thetaA, T i_thetaB,
+                    T& o_dA, T& o_dB) const {
+    T shape = i_baseShape;
     if (m_swell >= 0.0) {
-      shape_bias = swellShape(i_omega, m_modalAngularFrequency, m_swell);
+      shape += swellShape(i_omega, m_modalAngularFrequency, m_swell);
     }
-
-    T shape_exp = i_omega <= m_modalAngularFrequency ? 5.0 : -2.5;
-    T shape =
-      m_modalShape * std::pow(i_omega / m_modalAngularFrequency, shape_exp);
-
-    shape += shape_bias;
 
     // The double literals are load-bearing: they promote these expressions
     // to double even for T = float, and tgamma overflows single precision
@@ -220,7 +212,6 @@ public:
     o_dB = evalAt(i_thetaB);
   }
 
-protected:
   T m_modalAngularFrequency;
   T m_modalShape;
   T m_modalCelerity;
@@ -230,17 +221,13 @@ protected:
 
 //------------------------------------------------------------------------------
 template <typename T>
-class HasselmannDirectionalSpreading {
+class MitsuyasuDirectionalSpreading
+  : public CosPowerDirectionalSpreadingBase<T> {
 public:
-  HasselmannDirectionalSpreading(const Parameters<T>& params)
-      : m_modalAngularFrequency(modalAngularFrequencyJONSWAP(
-          params.gravity, params.windSpeed, params.fetch))
-      , m_modalShape(11.5 * std::pow(m_modalAngularFrequency *
-                                       params.windSpeed / params.gravity,
-                                     -2.5))
-      , m_modalCelerity(params.gravity / m_modalAngularFrequency)
-      , m_windSpeedOverCelerity(params.windSpeed / m_modalCelerity)
-      , m_swell(params.directionalSpreading.swell) {}
+  typedef CosPowerDirectionalSpreadingBase<T> super_type;
+
+  explicit MitsuyasuDirectionalSpreading(const Parameters<T>& params)
+      : super_type(params) {}
 
   T operator()(T i_omega, T i_theta, T i_kMag, T i_dTheta) const {
     T dA, dB;
@@ -248,58 +235,55 @@ public:
     return dA;
   }
 
-  // Evaluate at two directions sharing one omega; the shape and the
-  // tgamma-based normalization depend only on omega and are computed once.
+  // Evaluate at two directions sharing one omega.
   void operator()(T i_omega, T i_thetaA, T i_thetaB, T /*i_kMag*/,
                   T /*i_dTheta*/, T& o_dA, T& o_dB) const {
-    T shape_bias = 0.0;
-    if (m_swell >= 0.0) {
-      shape_bias = swellShape(i_omega, m_modalAngularFrequency, m_swell);
-    }
+    T shape_exp = i_omega <= this->m_modalAngularFrequency ? 5.0 : -2.5;
+    T baseShape =
+      this->m_modalShape *
+      std::pow(i_omega / this->m_modalAngularFrequency, shape_exp);
+    this->evaluatePair(i_omega, baseShape, i_thetaA, i_thetaB, o_dA, o_dB);
+  }
+};
 
-    T shape;
-    if (i_omega > m_modalAngularFrequency) {
-      shape =
-        9.77 * std::pow(i_omega / m_modalAngularFrequency,
-                        -2.33 - (1.45 * (m_windSpeedOverCelerity - 1.17)));
-    } else {
-      shape = 6.97 * std::pow(i_omega / m_modalAngularFrequency, 4.06);
-    }
-    shape += shape_bias;
+//------------------------------------------------------------------------------
+template <typename T>
+class HasselmannDirectionalSpreading
+  : public CosPowerDirectionalSpreadingBase<T> {
+public:
+  typedef CosPowerDirectionalSpreadingBase<T> super_type;
 
-    // The double literals are load-bearing: they promote these expressions
-    // to double even for T = float, and tgamma overflows single precision
-    // (NaN normalization) once large swell pushes 2*shape past ~34. Do not
-    // "clean up" the literals to T(...).
-    T factor_A = std::pow(2.0, (2.0 * shape) - 1.0) / PI<T>;
-    T factor_B =
-      sqr(std::tgamma(shape + 1.0)) / std::tgamma((2.0 * shape) + 1.0);
-    auto evalAt = [this, factor_A, factor_B, shape](T theta) -> T {
-      T factor_C = std::pow(std::abs(std::cos(theta / 2.0)), 2.0 * shape);
-      if (m_swell < 0) {
-        return Imath::lerp(factor_A * factor_B * factor_C, T(1) / T(TAU<T>),
-                           Imath::clamp(-m_swell, T(0), T(1)));
-      } else {
-        return factor_A * factor_B * factor_C;
-      }
-    };
-    o_dA = evalAt(i_thetaA);
-    o_dB = evalAt(i_thetaB);
+  explicit HasselmannDirectionalSpreading(const Parameters<T>& params)
+      : super_type(params) {}
+
+  T operator()(T i_omega, T i_theta, T i_kMag, T i_dTheta) const {
+    T dA, dB;
+    (*this)(i_omega, i_theta, i_theta, i_kMag, i_dTheta, dA, dB);
+    return dA;
   }
 
-protected:
-  T m_modalAngularFrequency;
-  T m_modalShape;
-  T m_modalCelerity;
-  T m_windSpeedOverCelerity;
-  T m_swell;
+  // Evaluate at two directions sharing one omega.
+  void operator()(T i_omega, T i_thetaA, T i_thetaB, T /*i_kMag*/,
+                  T /*i_dTheta*/, T& o_dA, T& o_dB) const {
+    T baseShape;
+    if (i_omega > this->m_modalAngularFrequency) {
+      baseShape =
+        9.77 * std::pow(i_omega / this->m_modalAngularFrequency,
+                        -2.33 - (1.45 * (this->m_windSpeedOverCelerity -
+                                         1.17)));
+    } else {
+      baseShape =
+        6.97 * std::pow(i_omega / this->m_modalAngularFrequency, 4.06);
+    }
+    this->evaluatePair(i_omega, baseShape, i_thetaA, i_thetaB, o_dA, o_dB);
+  }
 };
 
 //------------------------------------------------------------------------------
 template <typename T>
 class PosCosSquaredDirectionalSpreading {
 public:
-  PosCosSquaredDirectionalSpreading(const Parameters<T>& params)
+  explicit PosCosSquaredDirectionalSpreading(const Parameters<T>& params)
       : m_modalAngularFrequency(modalAngularFrequencyJONSWAP(
           params.gravity, params.windSpeed, params.fetch))
       , m_swell(params.directionalSpreading.swell) {}
