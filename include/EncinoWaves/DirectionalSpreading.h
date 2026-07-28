@@ -127,7 +127,7 @@ public:
       // upstream code lerped toward -1/(2pi), which drives the spreading
       // (and with it the spectral energy) negative; the sign error was
       // masked downstream by the abs() in the amplitude computation.
-      return Imath::lerp(d, T(1) / T(TAU<T>),
+      return Imath::lerp(d, T(1) / TAU<T>,
                          Imath::clamp(-m_swell, T(0), T(1)));
     }
   }
