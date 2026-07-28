@@ -46,7 +46,10 @@ namespace EncinoWaves {
 //-*****************************************************************************
 
 typedef std::uint_fast32_t seed_type;
-typedef std::minstd_rand Rand48_Engine;
+// The per-point engine. minstd_rand (a minimal-standard LCG) — chosen for
+// cheap reseeding, since InitialState reseeds at every spectral point.
+// (Historically misnamed Rand48_Engine.)
+typedef std::minstd_rand RandomEngine;
 
 //-*****************************************************************************
 template <typename T>
@@ -74,7 +77,7 @@ template <typename T>
 class BaseRandom {
 protected:
   seed_type m_seed;
-  Rand48_Engine m_engine;
+  RandomEngine m_engine;
   std::uniform_real_distribution<T> m_phaseDist;
 
 public:
@@ -92,8 +95,16 @@ public:
     this->seed(m_seed);
   }
 
+  //! Reseeds the engine, MIXING the argument with the base seed from
+  //! Parameters (the engine is seeded with i_seed + m_seed, not i_seed
+  //! alone) — so two BaseRandoms with different base seeds diverge even
+  //! when reseeded with equal arguments. Preserved as-is: changing this
+  //! would change every generated ocean.
   void seed(seed_type i_seed) { m_engine.seed(i_seed + m_seed); }
 
+  //! Reseeds deterministically from a wavenumber (hashed with the base
+  //! seed), so every spectral point gets reproducible draws regardless of
+  //! evaluation order.
   void seed(const Imath::Vec2<T> &i_wavenumber) {
     m_engine.seed(SeedFromWavenumber<T>(i_wavenumber, m_seed));
   }

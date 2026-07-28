@@ -14,8 +14,6 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_EXTENSIONS OFF)
 endif()
 
-# Upstream code: partial template instantiation leaves some statics unused.
-add_compile_options(-Wno-unused-function)
 
 # ---- optional sanitizer build (-DSANITIZE=address|thread|undefined) ----
 # Applied to every target (library, tests, benchmark). `address` also turns on
@@ -124,7 +122,7 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/copyright
 # ---- headless smoke tests (drivers exit non-zero on failure) ----
 if(BUILD_TESTING)
   foreach(t test_DirectionalSpreading test_FftwWrapper test_headers
-            test_Propagation)
+            test_Propagation test_Random)
     add_executable(${t} test/${t}.cc)
     target_link_libraries(${t} PRIVATE ${PROJECT_NAME})
     add_test(NAME ${t} COMMAND ${t})

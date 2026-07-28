@@ -48,6 +48,12 @@
 namespace EncinoWaves {
 
 //-*****************************************************************************
+//! The one-shot spectral initial state of an ocean: the forward and
+//! backward complex amplitudes h0+(k) / h0-(k) and the angular frequency
+//! omega(k), evaluated at every point of the (N/2+1) x N hermitian
+//! spectral grid from the configured dispersion, spectrum, directional
+//! spreading, filter, and random draws. Construct once per parameter set;
+//! Propagation evolves it in time.
 template <typename T>
 struct InitialState {
   ComplexSpectralField2D<T> HSpectralPos;
@@ -75,20 +81,20 @@ struct InitialStateHelper {
                              FILTER, RANDOM, T> this_type;
 
   // Functional configuration
-  const DISPERSION* Dispersion;
-  const SPECTRUM* Spectrum;
-  const DIRECTIONAL_SPREADING* DirectionalSpreading;
-  const FILTER* Filter;
-  const RANDOM* Random;
+  const DISPERSION* Dispersion = nullptr;
+  const SPECTRUM* Spectrum = nullptr;
+  const DIRECTIONAL_SPREADING* DirectionalSpreading = nullptr;
+  const FILTER* Filter = nullptr;
+  const RANDOM* Random = nullptr;
 
   // Arrays
-  complex_type* HSpectralPos;
-  complex_type* HSpectralNeg;
-  real_type* Omega;
+  complex_type* HSpectralPos = nullptr;
+  complex_type* HSpectralNeg = nullptr;
+  real_type* Omega = nullptr;
 
   // Info
-  real_type RhoG;
-  real_type Domain;
+  real_type RhoG = real_type(0);
+  real_type Domain = real_type(0);
 
   // Little processor object that is run at each point.
   struct Processor {
@@ -265,7 +271,7 @@ void ExecuteRange(const DISPERSION& i_dispersion, const SPECTRUM& i_spectrum,
 
   // Spectral Iterate.
   int N = o_state.HSpectralPos.height();
-  { SpectralIterationFunctor<T, F_type, P_type> iter(&F, i_domain, N); }
+  SpectralIterate<P_type>(F, i_domain, N);
 };
 
 //-*****************************************************************************

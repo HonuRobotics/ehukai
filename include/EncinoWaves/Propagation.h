@@ -46,6 +46,11 @@
 namespace EncinoWaves {
 
 //-*****************************************************************************
+//! Per-frame spatial output grids: the surface Height, the lateral (chop)
+//! displacements Dx/Dy, and MinE — the smaller eigenvalue of the pinch
+//! Jacobian, which dips below 0 where the surface folds (a foam /
+//! compression indicator). All grids are (N+1) x (N+1): the extra wrapped
+//! border row/column makes the tile seamlessly periodic.
 template <typename T> struct PropagatedState {
   RealSpatialField2D<T> Height;
   RealSpatialField2D<T> Dx;
@@ -64,6 +69,10 @@ template <typename T> struct PropagatedState {
 };
 
 //-*****************************************************************************
+//! Reusable per-frame working state: spectral scratch buffers, the
+//! filtered-height buffers for trough damping, and the inverse-FFT plan.
+//! Construct once (alongside an InitialState) and call propagate() with an
+//! increasing time each frame.
 template <typename T> struct Propagation {
   ComplexSpectralField2D<T> HSpec;
   ComplexSpectralField2D<T> TempSpec;
@@ -77,7 +86,7 @@ template <typename T> struct Propagation {
 
   SpectralToPaddedSpatial2D<T> Converter;
 
-  T Domain;
+  T Domain = T(0);
 
   explicit Propagation(const Parameters<T> &i_params, int i_nthreads = -1)
       : HSpec(i_params.resolutionPowerOfTwo),
@@ -90,6 +99,10 @@ template <typename T> struct Propagation {
         FiltMinE(i_params.resolutionPowerOfTwo, 1),
         Converter(HSpec, TempSpat, i_nthreads), Domain(i_params.domain) {}
 
+  //! Evolves i_istate to time i_time (seconds) and fills o_pstate's
+  //! Height / Dx / Dy / MinE grids. When i_params.troughDamping > 0 an
+  //! additional band-filtered pass attenuates wave troughs (at the cost of
+  //! roughly twice the FFT work).
   void propagate(const Parameters<T> &i_params, const InitialState<T> &i_istate,
                  PropagatedState<T> &o_pstate, T i_time);
 };
@@ -117,13 +130,13 @@ template <typename T> struct HSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const complex_type *HSpecPos;
-  const complex_type *HSpecNeg;
-  const real_type *Omega;
+  const complex_type *HSpecPos = nullptr;
+  const complex_type *HSpecNeg = nullptr;
+  const real_type *Omega = nullptr;
 
-  complex_type *HSpecProp;
+  complex_type *HSpecProp = nullptr;
 
-  real_type Time;
+  real_type Time = real_type(0);
 
   void operator()(std::size_t i_index) {
     HSpecProp[i_index] = complex_type(0.0, 0.0);
@@ -154,8 +167,8 @@ template <typename T> struct DXSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const complex_type *HSpecProp;
-  complex_type *DxSpecProp;
+  const complex_type *HSpecProp = nullptr;
+  complex_type *DxSpecProp = nullptr;
 
   void operator()(std::size_t i_index) {
     DxSpecProp[i_index] = complex_type(0.0, 0.0);
@@ -176,8 +189,8 @@ template <typename T> struct DYSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const complex_type *HSpecProp;
-  complex_type *DySpecProp;
+  const complex_type *HSpecProp = nullptr;
+  complex_type *DySpecProp = nullptr;
 
   void operator()(std::size_t i_index) {
     DySpecProp[i_index] = complex_type(0.0, 0.0);
@@ -196,8 +209,8 @@ template <typename T> struct DXXSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const complex_type *HSpecProp;
-  complex_type *DxxSpecProp;
+  const complex_type *HSpecProp = nullptr;
+  complex_type *DxxSpecProp = nullptr;
 
   void operator()(std::size_t i_index) {
     DxxSpecProp[i_index] = complex_type(0.0, 0.0);
@@ -216,8 +229,8 @@ template <typename T> struct DYYSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const complex_type *HSpecProp;
-  complex_type *DyySpecProp;
+  const complex_type *HSpecProp = nullptr;
+  complex_type *DyySpecProp = nullptr;
 
   void operator()(std::size_t i_index) {
     DyySpecProp[i_index] = complex_type(0.0, 0.0);
@@ -236,8 +249,8 @@ template <typename T> struct DXYSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const complex_type *HSpecProp;
-  complex_type *DxySpecProp;
+  const complex_type *HSpecProp = nullptr;
+  complex_type *DxySpecProp = nullptr;
 
   void operator()(std::size_t i_index) {
     DxySpecProp[i_index] = complex_type(0.0, 0.0);
@@ -252,10 +265,10 @@ template <typename T> struct DXYSPEC {
 
 //-*****************************************************************************
 template <typename T> struct ComputeMinE {
-  const T *Dxx;
-  const T *Dyy;
-  T *Dxy_and_MinE;
-  T Pinch;
+  const T *Dxx = nullptr;
+  const T *Dyy = nullptr;
+  T *Dxy_and_MinE = nullptr;
+  T Pinch = T(0);
 
   void operator()(const tbb::blocked_range<std::size_t> &i_range) const {
     for (std::size_t i = i_range.begin(); i != i_range.end(); ++i) {
@@ -277,10 +290,10 @@ template <typename T> struct HFILTSPEC {
   typedef std::complex<T> complex_type;
   typedef Imath::Vec2<real_type> vec_type;
 
-  const SmoothInvertibleBandPassFilter<T> *Filter;
+  const SmoothInvertibleBandPassFilter<T> *Filter = nullptr;
 
-  const complex_type *HSpecProp;
-  complex_type *HFiltSpecProp;
+  const complex_type *HSpecProp = nullptr;
+  complex_type *HFiltSpecProp = nullptr;
 
   void operator()(std::size_t i_index) {
     HFiltSpecProp[i_index] = HSpecProp[i_index];
@@ -294,12 +307,12 @@ template <typename T> struct HFILTSPEC {
 
 //-*****************************************************************************
 template <typename T> struct ConvertMinEToInterpolant {
-  T GainMinE;
-  T BiasMinE;
-  T MinClipE;
-  T MaxClipE;
-  T MinInterpolant;
-  T *MinE_And_Interpolant;
+  T GainMinE = T(0);
+  T BiasMinE = T(0);
+  T MinClipE = T(0);
+  T MaxClipE = T(0);
+  T MinInterpolant = T(0);
+  T *MinE_And_Interpolant = nullptr;
 
   void operator()(const tbb::blocked_range<std::size_t> &i_range) const {
     for (std::size_t i = i_range.begin(); i != i_range.end(); ++i) {
@@ -314,9 +327,9 @@ template <typename T> struct ConvertMinEToInterpolant {
 
 //-*****************************************************************************
 template <typename T> struct InterpolateIntoB {
-  const T *A;
-  T *B;
-  const T *Interpolant;
+  const T *A = nullptr;
+  T *B = nullptr;
+  const T *Interpolant = nullptr;
 
   void operator()(const tbb::blocked_range<std::size_t> &i_range) const {
     for (std::size_t i = i_range.begin(); i != i_range.end(); ++i) {
@@ -348,7 +361,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     F.Omega = i_istate.Omega.cdata();
     F.HSpecProp = HSpec.data();
     F.Time = i_time;
-    SpectralIterationFunctor<T, HSPEC<T>, HSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Make DxxSpec from Hspec
@@ -356,7 +369,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DXXSPEC<T> F;
     F.HSpecProp = HSpec.cdata();
     F.DxxSpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DXXSPEC<T>, DXXSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute Dxx, temporarily put into Dx.
@@ -367,7 +380,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DYYSPEC<T> F;
     F.HSpecProp = HSpec.cdata();
     F.DyySpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DYYSPEC<T>, DYYSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute Dyy, temporarily put into Dy.
@@ -378,7 +391,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DXYSPEC<T> F;
     F.HSpecProp = HSpec.cdata();
     F.DxySpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DXYSPEC<T>, DXYSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute Dxy, temporarily put into MinE.
@@ -399,7 +412,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DXSPEC<T> F;
     F.HSpecProp = HSpec.cdata();
     F.DxSpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DXSPEC<T>, DXSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute Dx
@@ -410,7 +423,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DYSPEC<T> F;
     F.HSpecProp = HSpec.cdata();
     F.DySpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DYSPEC<T>, DYSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute Dy
@@ -435,7 +448,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     F.Filter = &filter;
     F.HSpecProp = HSpec.cdata();
     F.HFiltSpecProp = HFiltSpec.data();
-    SpectralIterationFunctor<T, HFILTSPEC<T>, HFILTSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute H.
@@ -446,7 +459,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DXXSPEC<T> F;
     F.HSpecProp = HFiltSpec.cdata();
     F.DxxSpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DXXSPEC<T>, DXXSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute FiltDxx, temporarily put into FiltDx.
@@ -457,7 +470,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DYYSPEC<T> F;
     F.HSpecProp = HFiltSpec.cdata();
     F.DyySpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DYYSPEC<T>, DYYSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute FiltDyy, temporarily put into FiltDy.
@@ -468,7 +481,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DXYSPEC<T> F;
     F.HSpecProp = HFiltSpec.cdata();
     F.DxySpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DXYSPEC<T>, DXYSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute FiltDxy, temporarily put into FiltMinE.
@@ -489,7 +502,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DXSPEC<T> F;
     F.HSpecProp = HFiltSpec.cdata();
     F.DxSpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DXSPEC<T>, DXSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute FiltDx
@@ -500,7 +513,7 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
     DYSPEC<T> F;
     F.HSpecProp = HFiltSpec.cdata();
     F.DySpecProp = TempSpec.data();
-    SpectralIterationFunctor<T, DYSPEC<T>, DYSPEC<T>> SIF(&F, Domain, N);
+    SpectralIterate(F, Domain, N);
   }
 
   // Compute FiltDy

@@ -51,9 +51,9 @@ struct ComputeNormalsWithPinching {
   V3T* Normals = nullptr;
 
   int N = 0;
-  T Spacing;
-  T AmpGain;
-  T Pinch;
+  T Spacing = T(0);
+  T AmpGain = T(0);
+  T Pinch = T(0);
 
   std::size_t index(std::size_t x, std::size_t y) const {
     return (y * std::size_t(N + 1)) + x;
@@ -96,6 +96,9 @@ struct ComputeNormalsWithPinching {
 };
 
 //-*****************************************************************************
+//! Computes per-vertex normals of the displaced (pinched) surface into
+//! o_normals, an (N+1) x (N+1) row-major array matching the padded
+//! PropagatedState grids.
 template <typename T>
 void ComputeNormals(const Parameters<T>& i_params,
                     const PropagatedState<T>& i_waves,

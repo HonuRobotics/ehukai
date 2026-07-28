@@ -72,7 +72,14 @@
 
 namespace EncinoWaves {
 
-using namespace Util;
+// Import only the Util helpers EncinoWaves code actually uses, instead of
+// the former `using namespace Util;`, which re-exported every Util name
+// into EncinoWaves for all downstream consumers.
+using Util::cube;
+using Util::mix;
+using Util::smoothstep;
+using Util::sqr;
+using Util::wrap;
 
 //-*****************************************************************************
 extern std::mutex g_printMutex;

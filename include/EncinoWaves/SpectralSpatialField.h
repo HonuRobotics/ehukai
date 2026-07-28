@@ -169,26 +169,13 @@ public:
 };
 
 //-*****************************************************************************
+// The Real/Complex variants add nothing beyond the element type; alias
+// templates replace the former constructor-forwarding derived classes.
 template <typename T>
-class RealSpatialField2D : public SpatialField2D<T> {
-public:
-  typedef SpatialField2D<T> super_type;
-  RealSpatialField2D()
-      : super_type() {}
-  explicit RealSpatialField2D(int i_powerOfTwo, int i_pad = 0)
-      : super_type(i_powerOfTwo, i_pad) {}
-};
+using RealSpatialField2D = SpatialField2D<T>;
 
-//-*****************************************************************************
 template <typename T>
-class ComplexSpatialField2D : public SpatialField2D<std::complex<T> > {
-public:
-  typedef SpatialField2D<std::complex<T> > super_type;
-  ComplexSpatialField2D()
-      : super_type() {}
-  explicit ComplexSpatialField2D(int i_powerOfTwo, int i_pad = 0)
-      : super_type(i_powerOfTwo, i_pad) {}
-};
+using ComplexSpatialField2D = SpatialField2D<std::complex<T> >;
 
 //-*****************************************************************************
 //-*****************************************************************************
@@ -228,26 +215,12 @@ public:
 };
 
 //-*****************************************************************************
+// As above: aliases instead of constructor-forwarding derived classes.
 template <typename T>
-class RealSpectralField2D : public SpectralField2D<T> {
-public:
-  typedef SpectralField2D<T> super_type;
-  RealSpectralField2D()
-      : super_type() {}
-  explicit RealSpectralField2D(int i_powerOfTwo)
-      : super_type(i_powerOfTwo) {}
-};
+using RealSpectralField2D = SpectralField2D<T>;
 
-//-*****************************************************************************
 template <typename T>
-class ComplexSpectralField2D : public SpectralField2D<std::complex<T> > {
-public:
-  typedef SpectralField2D<std::complex<T> > super_type;
-  ComplexSpectralField2D()
-      : super_type() {}
-  explicit ComplexSpectralField2D(int i_powerOfTwo)
-      : super_type(i_powerOfTwo) {}
-};
+using ComplexSpectralField2D = SpectralField2D<std::complex<T> >;
 
 //-*****************************************************************************
 //-*****************************************************************************
@@ -315,8 +288,8 @@ protected:
 //-*****************************************************************************
 template <typename T>
 struct CopyWrappedBorder {
-  T* Data;
-  int N;
+  T* Data = nullptr;
+  int N = 0;
 
   void operator()(const tbb::blocked_range<int>& i_rows) const {
     std::size_t stride = N + 1;
