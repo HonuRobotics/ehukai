@@ -170,6 +170,10 @@ public:
 
     shape += shape_bias;
 
+    // The double literals are load-bearing: they promote these expressions
+    // to double even for T = float, and tgamma overflows single precision
+    // (NaN normalization) once large swell pushes 2*shape past ~34. Do not
+    // "clean up" the literals to T(...).
     T factor_A = std::pow(2.0, (2.0 * shape) - 1.0) / PI<T>;
     T factor_B =
       sqr(std::tgamma(shape + 1.0)) / std::tgamma((2.0 * shape) + 1.0);
@@ -220,6 +224,10 @@ public:
     }
     shape += shape_bias;
 
+    // The double literals are load-bearing: they promote these expressions
+    // to double even for T = float, and tgamma overflows single precision
+    // (NaN normalization) once large swell pushes 2*shape past ~34. Do not
+    // "clean up" the literals to T(...).
     T factor_A = std::pow(2.0, (2.0 * shape) - 1.0) / PI<T>;
     T factor_B =
       sqr(std::tgamma(shape + 1.0)) / std::tgamma((2.0 * shape) + 1.0);
