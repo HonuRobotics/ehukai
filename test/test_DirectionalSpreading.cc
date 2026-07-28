@@ -1,0 +1,167 @@
+/*
+ * Copyright (C) 2026 Honu Robotics
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *
+ * Property tests for the directional spreading functions. A spreading
+ * function D(omega, theta) is a probability density over direction, so for
+ * every spreading model, wave frequency, and swell setting:
+ *
+ *   1. D must be finite and non-negative for all theta in [-pi, pi].
+ *      This is the property the upstream Donelan-Banner negative-swell
+ *      branch violated by blending toward -1/(2pi) instead of +1/(2pi).
+ *   2. At swell = -1 the Donelan-Banner, Mitsuyasu, and Hasselmann models
+ *      blend fully to the isotropic distribution, so D == 1/(2pi) exactly,
+ *      independent of theta and omega.
+ *   3. Where the model is normalized over the full circle, the integral of
+ *      D over [-pi, pi] must be ~1: Mitsuyasu and Hasselmann always
+ *      (closed-form normalization), Donelan-Banner for swell < 0
+ *      (a blend of two full-circle-normalized densities), and
+ *      PosCosSquared (its kernel is zero outside [-pi/2, pi/2], the range
+ *      its numerical normalization integrates over). Donelan-Banner with
+ *      swell >= 0 normalizes over [-pi/2, pi/2] only, so its full-circle
+ *      integral legitimately exceeds 1 and is not checked here.
+ *
+ * Run in double precision: the float tgamma overflow for large spreading
+ * exponents is a separate known issue and not what this test targets.
+ */
+
+#include "EncinoWaves/DirectionalSpreading.h"
+#include "EncinoWaves/Parameters.h"
+
+#include <cmath>
+#include <iostream>
+#include <string>
+#include <vector>
+
+namespace
+{
+  constexpr double kPi = 3.14159265358979323846;
+
+  // Trapezoidal integral of D(omega, theta) over theta in [-pi, pi].
+  template <typename SPREADING>
+  double IntegrateOverTheta(const SPREADING &D, double omega, int n = 4001)
+  {
+    double sum = 0.0;
+    const double h = (2.0 * kPi) / (n - 1);
+    for (int i = 0; i < n; ++i)
+    {
+      const double theta = -kPi + i * h;
+      const double w = (i == 0 || i == n - 1) ? 0.5 : 1.0;
+      sum += w * D(omega, theta, /*kMag=*/1.0, /*dTheta=*/h);
+    }
+    return sum * h;
+  }
+}  // namespace
+
+int main()
+{
+  std::cout << "Directional spreading property tests\n\n";
+
+  bool ok = true;
+  auto demand = [&](bool cond, const std::string &msg) {
+    std::cout << "  " << (cond ? "[ok]   " : "[FAIL] ") << msg << "\n";
+    if (!cond) ok = false;
+  };
+
+  const std::vector<double> omegas = {0.5, 1.0, 2.0, 4.0, 6.0};
+  const std::vector<double> swells = {-1.0, -0.6, -0.2, 0.0, 0.4, 1.0};
+  constexpr int kThetaSamples = 721;
+  const double isotropic = 1.0 / (2.0 * kPi);
+
+  // Runs properties 1-3 for one spreading model across the sample grid.
+  // `checkIntegral` decides per-swell whether the full-circle integral
+  // must be ~1 for this model; `hasIsotropicBlend` says whether swell = -1
+  // must collapse to the uniform distribution.
+  auto testSpreading = [&](const std::string &name, auto makeSpreading,
+                           auto checkIntegral, bool hasIsotropicBlend) {
+    std::cout << name << ":\n";
+
+    bool allNonNegative = true;
+    bool allFinite = true;
+    bool isotropicAtFullNegativeSwell = true;
+    bool integralsUnit = true;
+
+    for (double swellAmount : swells)
+    {
+      EncinoWaves::Parameters<double> params;
+      params.directionalSpreading.swell = swellAmount;
+      const auto D = makeSpreading(params);
+
+      for (double omega : omegas)
+      {
+        for (int i = 0; i < kThetaSamples; ++i)
+        {
+          const double theta = -kPi + (2.0 * kPi * i) / (kThetaSamples - 1);
+          const double d = D(omega, theta, 1.0, 0.01);
+          if (!std::isfinite(d)) allFinite = false;
+          if (d < 0.0) allNonNegative = false;
+          if (hasIsotropicBlend && swellAmount == -1.0 &&
+              std::abs(d - isotropic) > 1e-9)
+            isotropicAtFullNegativeSwell = false;
+        }
+
+        if (checkIntegral(swellAmount))
+        {
+          const double integral = IntegrateOverTheta(D, omega);
+          if (std::abs(integral - 1.0) > 0.02)
+          {
+            std::cout << "    (integral = " << integral << " at omega = "
+                      << omega << ", swell = " << swellAmount << ")\n";
+            integralsUnit = false;
+          }
+        }
+      }
+    }
+
+    demand(allFinite, name + ": finite for all (omega, theta, swell)");
+    demand(allNonNegative, name + ": non-negative everywhere");
+    if (hasIsotropicBlend)
+      demand(isotropicAtFullNegativeSwell,
+             name + ": swell = -1 gives the isotropic 1/(2pi)");
+    demand(integralsUnit, name + ": normalized integrals are ~1");
+  };
+
+  testSpreading(
+      "DonelanBanner",
+      [](const EncinoWaves::Parameters<double> &p) {
+        return EncinoWaves::DonelanBannerDirectionalSpreading<double>(p);
+      },
+      // Full-circle normalization only holds on the negative-swell branch.
+      [](double swell) { return swell < 0.0; },
+      /*hasIsotropicBlend=*/true);
+
+  testSpreading(
+      "Mitsuyasu",
+      [](const EncinoWaves::Parameters<double> &p) {
+        return EncinoWaves::MitsuyasuDirectionalSpreading<double>(p);
+      },
+      [](double) { return true; },
+      /*hasIsotropicBlend=*/true);
+
+  testSpreading(
+      "Hasselmann",
+      [](const EncinoWaves::Parameters<double> &p) {
+        return EncinoWaves::HasselmannDirectionalSpreading<double>(p);
+      },
+      [](double) { return true; },
+      /*hasIsotropicBlend=*/true);
+
+  testSpreading(
+      "PosCosSquared",
+      [](const EncinoWaves::Parameters<double> &p) {
+        return EncinoWaves::PosCosSquaredDirectionalSpreading<double>(p);
+      },
+      // No isotropic blend branch; the kernel is zero outside
+      // [-pi/2, pi/2], so the full-circle integral is ~1 for any swell.
+      [](double) { return true; },
+      /*hasIsotropicBlend=*/false);
+
+  std::cout << "\nresult: " << (ok ? "PASS" : "FAIL") << "\n";
+  return ok ? 0 : 1;
+}

@@ -122,7 +122,12 @@ public:
       T integral =
         (std::tanh(beta_s * PI<T>) - std::tanh(-beta_s * PI<T>)) / beta_s;
       T d = B(i_theta) / integral;
-      return Imath::lerp(d, static_cast<T>(-1.0 / (2.0 * PI<T>)),
+      // Negative swell blends toward the isotropic distribution 1/(2pi),
+      // exactly as the Mitsuyasu and Hasselmann spreadings do below. The
+      // upstream code lerped toward -1/(2pi), which drives the spreading
+      // (and with it the spectral energy) negative; the sign error was
+      // masked downstream by the abs() in the amplitude computation.
+      return Imath::lerp(d, T(1) / TAU<T>,
                          Imath::clamp(-m_swell, T(0), T(1)));
     }
   }
