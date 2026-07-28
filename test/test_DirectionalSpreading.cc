@@ -69,6 +69,28 @@ int main()
     if (!cond) ok = false;
   };
 
+  // The modal angular frequency the spreading models share with the JONSWAP
+  // spectrum: omega_m = TAU 3.5 (g/U) (g F / U^2)^-0.33 with fetch in METERS,
+  // while the function takes the Parameters convention of kilometers. This
+  // pins the km-to-m conversion; the upstream code fed kilometers straight
+  // into the dimensionless fetch, placing the spreading's modal frequency
+  // ~9.8x above the spectrum's peak.
+  {
+    const double g = 9.81, U = 17.0, fetchKm = 300.0;
+    const double chi = g * (fetchKm * 1000.0) / (U * U);
+    const double expected =
+        2.0 * kPi * 3.5 * (g / U) * std::pow(chi, -0.33);
+    const double actual =
+        EncinoWaves::modalAngularFrequencyJONSWAP(g, U, fetchKm);
+    demand(std::abs(actual - expected) < 1e-9 * expected,
+           "modalAngularFrequencyJONSWAP treats fetch as km (SI internally)");
+    // Sanity: ~0.6 rad/s is a ~10 s peak period, a realistic sea state for
+    // 17 m/s wind and 300 km fetch. The unconverted version gave ~5.9 rad/s.
+    demand(actual > 0.3 && actual < 1.2,
+           "modal angular frequency is physically plausible");
+  }
+  std::cout << "\n";
+
   const std::vector<double> omegas = {0.5, 1.0, 2.0, 4.0, 6.0};
   const std::vector<double> swells = {-1.0, -0.6, -0.2, 0.0, 0.4, 1.0};
   constexpr int kThetaSamples = 721;

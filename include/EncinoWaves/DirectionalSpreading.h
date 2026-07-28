@@ -75,9 +75,16 @@ T normalizedSwellDirectionalProduct(T theta, FUNCA A, FUNCB B) {
 }
 
 //------------------------------------------------------------------------------
+// JONSWAP peak angular frequency: omega_m = TAU 3.5 (g/U) chi^-0.33 with the
+// dimensionless fetch chi = g F / U^2, F in METERS. The fetch argument is in
+// kilometers (the Parameters convention) and converted here, matching the
+// km-to-m conversion JONSWAPSpectrum::init applies before computing the same
+// quantity; without it the spreading's modal frequency sat ~9.8x above the
+// spectrum's peak.
 template <typename T>
-T modalAngularFrequencyJONSWAP(T gravity, T meanWindSpeed, T fetchLength) {
-  T dimensionlessFetch = gravity * fetchLength / sqr(meanWindSpeed);
+T modalAngularFrequencyJONSWAP(T gravity, T meanWindSpeed, T fetchKm) {
+  T fetchM             = fetchKm * T(1000.0);
+  T dimensionlessFetch = gravity * fetchM / sqr(meanWindSpeed);
   return TAU<T> * 3.5 * (gravity / meanWindSpeed) *
          std::pow(dimensionlessFetch, -0.33);
 }
@@ -236,14 +243,6 @@ protected:
 //------------------------------------------------------------------------------
 template <typename T>
 class PosCosSquaredDirectionalSpreading {
-protected:
-  static T modalAngularFrequencyJONSWAP(T gravity, T meanWindSpeed,
-                                        T fetchLength) {
-    T dimensionlessFetch = gravity * fetchLength / sqr(meanWindSpeed);
-    return TAU<T> * 3.5 * (gravity / meanWindSpeed) *
-           std::pow(dimensionlessFetch, -0.33);
-  }
-
 public:
   PosCosSquaredDirectionalSpreading(const Parameters<T>& params)
       : m_modalAngularFrequency(modalAngularFrequencyJONSWAP(
