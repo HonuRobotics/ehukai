@@ -105,7 +105,7 @@ SINGULAR_VALUE_TYPE(Imath::Vec3<double>, double);
 #undef SINGULAR_VALUE_TYPE
 
 //-*****************************************************************************
-static int PowerOfTwo(int i_power) {
+constexpr int PowerOfTwo(int i_power) {
   if (i_power <= 0) {
     return 1;
   } else if (i_power >= 30) {
@@ -114,115 +114,6 @@ static int PowerOfTwo(int i_power) {
     return (0x1 << i_power);
   }
 }
-#if 0
-
-//-*****************************************************************************
-// This wraps the input x into the range [lowerBound,upperBound], with periodic
-// repeat. So, for example, for ints, a section of the number line, for the
-// lowerbound of 2 and an upper bound of 5:
-//
-// INPUT X: -3 -2 -1 0 1 2 3 4 5 6 7 8 9 10
-//  OUTPUT:  5  2  3 4 5 2 3 4 5 2 3 4 5  2
-// template <typename T>
-//  T wrap( T i_x, T i_lowerBound, T i_upperBound );
-
-// This version wraps x into the periodic range [0,n). It is the same
-// as calling wrap( x, 0, n-1 ), for int-likes,
-// and wrap( x, 0, n ) for float-likes
-// template <typename T>
-//  T wrap( T x, T n );
-
-//-*****************************************************************************
-// This assumes a signed integer type for T.
-template <typename T>
-typename std::enable_if<std::is_integral<T>::value && std::is_signed<T>::value,
-                        T>::type
-wrap(T i_x, T i_lowerBound, T i_upperBound) {
-  const T rangeSize = i_upperBound - i_lowerBound + 1;
-
-  if (i_x < i_lowerBound) {
-    i_x += rangeSize * (((i_lowerBound - i_x) / rangeSize) + 1);
-  }
-
-  return i_lowerBound + (i_x - i_lowerBound) % rangeSize;
-}
-
-//-*****************************************************************************
-template <typename T>
-typename std::enable_if<std::is_integral<T>::value && std::is_signed<T>::value,
-                        T>::type
-wrap(T i_x, T N) {
-  if (i_x < 0) {
-    i_x += N * (((-i_x) / N) + 1);
-  }
-
-  return i_x % N;
-}
-
-//-*****************************************************************************
-template <typename T>
-typename std::enable_if<std::is_floating_point<T>::value, T>::type wrap(T x,
-                                                                        T n) {
-  return x - (n * std::floor(x / n));
-}
-
-//-*****************************************************************************
-template <typename T>
-typename std::enable_if<std::is_floating_point<T>::value, T>::type wrap(T x,
-                                                                        T lb,
-                                                                        T ub) {
-  return lb + wrap(x - lb, ub - lb);
-}
-
-//******************************************************************************
-// Smoothstep function
-// Goes from 0 to 1.
-template <typename T>
-T smoothstep(const T& t) {
-  if (t <= T(0)) {
-    return T(0);
-  } else if (t >= T(1)) {
-    return T(1);
-  } else {
-    return t * t * (T(3) - (t * T(2)));
-  }
-}
-
-//******************************************************************************
-template <typename T>
-T smoothstep(const T& edge0, const T& edge1, const T& t) {
-  return smoothstep((t - edge0) / (edge1 - edge0));
-}
-
-//-*****************************************************************************
-template <typename T>
-const T& linstep(const T& t) {
-  return clamp(t, T(0), T(1));
-}
-
-//-*****************************************************************************
-template <typename T>
-T linstep(const T& edge0, const T& edge1, const T& t) {
-  return linstep((t - edge0) / (edge1 - edge0));
-}
-
-//-*****************************************************************************
-template <typename T>
-T sqr(const T& i_t) {
-  return i_t * i_t;
-}
-
-template <typename T>
-T cube(const T& i_t) {
-  return i_t * i_t * i_t;
-}
-
-template <typename T, typename InterpT>
-T mix(const T& a, const T& b, InterpT t) {
-  return (a * (InterpT(1) - t)) + (b * t);
-}
-#endif
-
 }  // namespace EncinoWaves
 
 #endif

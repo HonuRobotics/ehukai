@@ -190,7 +190,6 @@ protected:
   int N;
 
   std::size_t m_strideJ;
-  real_type m_maxKmag;
   real_type m_dK;
 
 public:
@@ -204,7 +203,6 @@ public:
 
     // Constants
     m_strideJ = (N / 2) + 1;
-    m_maxKmag = real_type(N / 2) * TAU<T> / m_domain;
     m_dK      = real_type(1) * TAU<T> / m_domain;
 
     // Execute it!
@@ -234,10 +232,7 @@ public:
         real_type ki   = real_type(i) * TAU<T> / m_domain;
         real_type kMag = std::hypot(ki, kj);
 
-        // By restricting to make sure kMag isn't too big, we
-        // avoid diagonal aliasing. It's very very hard to see,
-        // aesthetically, but this makes it correct.
-        if ((i == 0 && realJ == 0) /*|| ( kMag > m_maxKmag )*/) {
+        if (i == 0 && realJ == 0) {
           proc(index);
         } else {
           proc(vec_type(ki, kj), kMag, m_dK, index);

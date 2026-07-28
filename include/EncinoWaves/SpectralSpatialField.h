@@ -64,6 +64,11 @@ protected:
   }
 
 public:
+  // Derived classes own m_data (raw FFT-allocated memory freed in their
+  // destructors); a member-wise copy would alias the buffer and double-free.
+  BaseField2D(const BaseField2D&) = delete;
+  BaseField2D& operator=(const BaseField2D&) = delete;
+
   ~BaseField2D() { m_data = nullptr; }
 
   iterator begin() { return m_data; }
@@ -147,6 +152,7 @@ public:
       , m_pad(i_pad) {
     this->m_data =
       reinterpret_cast<T*>(FFT::Malloc(this->m_dataSize * sizeof(T)));
+    EWAV_ASSERT(this->m_data != nullptr, "SpatialField2D allocation failed");
     std::fill(this->m_data, this->m_data + this->m_dataSize, T(0.0));
   }
 
@@ -209,7 +215,7 @@ public:
                    PowerOfTwo(Imath::clamp(i_powerOfTwo, 0, 30))) {
     this->m_data =
       reinterpret_cast<T*>(FFT::Malloc(this->m_dataSize * sizeof(T)));
-
+    EWAV_ASSERT(this->m_data != nullptr, "SpectralField2D allocation failed");
     std::fill(this->m_data, this->m_data + this->m_dataSize, T(0.0));
   }
 
@@ -270,24 +276,18 @@ public:
 
     if (i_numThreads > 1) {
       FftwInitThreadsT<T>();
-      // std::cout << "initialized threads" << std::endl;
       FFT::plan_with_nthreads(i_numThreads);
-      // std::cout << "Using: " << i_numThreads << " threads" << std::endl;
     }
 
-// We're creating an out-of-place transform that destroys input.
-#if 0
-        m_plan = FFT::plan_dft_c2r_2d( m_widthHeight, m_widthHeight,
-                                       i_spectral.data(),
-                                       o_spatial.data(),
-                                       FFTW_ESTIMATE | FFTW_DESTROY_INPUT );
-#else
+    // We're creating an out-of-place transform that destroys input.
     m_plan = FFT::plan_guru_dft_c2r(m_widthHeight, m_widthHeight,
                                     i_spectral.data(), o_spatial.data(),
                                     FFTW_ESTIMATE | FFTW_DESTROY_INPUT);
-
-#endif
   }
+
+  // Owns m_plan; copying would double-destroy it.
+  SpectralToSpatial2D(const SpectralToSpatial2D&) = delete;
+  SpectralToSpatial2D& operator=(const SpectralToSpatial2D&) = delete;
 
   ~SpectralToSpatial2D() {
     if (m_plan) {
@@ -356,9 +356,7 @@ public:
 
     if (i_numThreads > 1) {
       FftwInitThreadsT<T>();
-      // std::cout << "initialized threads" << std::endl;
       FFT::plan_with_nthreads(i_numThreads);
-      // std::cout << "Using: " << i_numThreads << " threads" << std::endl;
     }
 
     // We're creating an out-of-place transform that destroys input.
@@ -366,6 +364,10 @@ public:
       m_widthHeight, m_widthHeight, 1, 1, i_spectral.data(), o_spatial.data(),
       FFTW_ESTIMATE | FFTW_DESTROY_INPUT);
   }
+
+  // Owns m_plan; copying would double-destroy it.
+  SpectralToPaddedSpatial2D(const SpectralToPaddedSpatial2D&) = delete;
+  SpectralToPaddedSpatial2D& operator=(const SpectralToPaddedSpatial2D&) = delete;
 
   ~SpectralToPaddedSpatial2D() {
     if (m_plan) {

@@ -92,17 +92,6 @@ extern void __EWAV_DEBUG_ASSERT_FAIL(const char *msg) throw();
 //-*****************************************************************************
 //! convenient macro which may be used with std::iostream syntax
 //! EWAV_THROW( "this integer: " << myInt << " is bad" )
-//#ifdef DEBUG
-#if 0
-
-#define EWAV_THROW(TEXT)            \
-  do {                              \
-    std::cerr << TEXT << std::endl; \
-    abort();                        \
-  } while (0)
-
-#else
-
 #define EWAV_THROW(TEXT)                          \
   do {                                            \
     std::stringstream sstr;                       \
@@ -112,8 +101,6 @@ extern void __EWAV_DEBUG_ASSERT_FAIL(const char *msg) throw();
     EncinoWaves::Util::Exception exc(sstr.str()); \
     throw(exc);                                   \
   } while (0)
-
-#endif
 
 //-*****************************************************************************
 #ifdef DEBUG

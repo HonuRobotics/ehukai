@@ -171,26 +171,6 @@ struct Stats {
   T MeanMinE;
   T StdDevMinE;
 
-#if 0
-    explicit Stats( const PropagatedState<T>& i_waves )
-    {
-        ParallelMinMaxSum<T>( i_waves.Height.cdata(), i_waves.Height.size(),
-                              MinHeight, MaxHeight, MeanHeight );
-        MeanHeight /= T( i_waves.Height.size() );
-
-        MeanMinE = ParallelMean<T>( i_waves.MinE.cdata(), i_waves.MinE.size() );
-        StdDevMinE =
-            ParallelStdDev<T>( MeanMinE,
-                               i_waves.MinE.cdata(), i_waves.MinE.size() );
-
-        std::cout << "Height (min, max, mean): ("
-                  << MinHeight << ", " << MaxHeight << ", " << MeanHeight
-                  << ")" << std::endl
-                  << "MinE (mean, stddev): ("
-                  << MeanMinE << ", " << StdDevMinE << ")" << std::endl;
-    }
-#endif
-
   Stats(const RealSpatialField2D<T>& Height,
         const RealSpatialField2D<T>& MinE) {
     ParallelMinMaxSum<T>(Height.cdata(), Height.size(), MinHeight, MaxHeight,
