@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 cmake_minimum_required(VERSION 3.18)
-project(EncinoWaves VERSION 1.0.0 LANGUAGES CXX)
+project(EncinoWaves VERSION 0.0.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -74,7 +74,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen TBB::tbb Imath::Imath
 # ---- install: headers, target, and the CMake package config ----
 # COMPONENT tags split the install into the `runtime` (shared object) and `dev`
 # (headers, .so symlink, CMake config) sets that cmake/Packaging.cmake turns into
-# the libencinowaves1 / libencinowaves-dev .deb packages. A plain `cmake --install`
+# the libencinowaves0 / libencinowaves-dev .deb packages. A plain `cmake --install`
 # is unaffected; it still installs every component.
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT dev
   DIRECTORY_PERMISSIONS
@@ -113,7 +113,7 @@ install(FILES
 
 # Each binary package needs its own machine-readable copyright (lintian).
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/copyright
-  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libencinowaves1
+  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libencinowaves0
   COMPONENT runtime)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/copyright
   DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libencinowaves-dev
