@@ -2,8 +2,11 @@
 #
 # Debian (.deb) packaging via CPack, component-based so we ship the standard
 # library split:
-#   libencinowaves1      runtime: libEncinoWaves.so.1, libEncinoWaves.so.1.0.0
+#   libencinowaves0      runtime: libEncinoWaves.so.0, libEncinoWaves.so.0.0.1
 #   libencinowaves-dev   headers, libEncinoWaves.so symlink, CMake package config
+#
+# The runtime package name tracks the SONAME, which CMakeLists.txt derives from
+# PROJECT_VERSION_MAJOR; a major bump renames the package (libencinowaves0 -> 1).
 #
 # Build the packages with (umask 022 keeps directory perms at 0755):
 #   umask 022
@@ -30,7 +33,7 @@ set(CPACK_DEB_COMPONENT_INSTALL ON)
 set(CPACK_DEBIAN_ENABLE_COMPONENT_DEPENDS ON)
 set(CPACK_COMPONENTS_ALL runtime dev)
 
-set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)            # libencinowaves1_1.0.0-1_amd64.deb
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)            # libencinowaves0_0.0.1-1_amd64.deb
 # Base Debian revision. CI appends a per-distribution suffix (e.g. ~ubuntu24.04)
 # via -DEW_DEB_DISTRO_SUFFIX so the same upstream version coexists across Ubuntu
 # releases and a release upgrade pulls the newer build (dpkg orders
@@ -53,7 +56,7 @@ set(CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS ON)
 set(CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS_POLICY ">=")
 
 # ---- runtime package: the shared object ----
-set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME    "libencinowaves1")
+set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME    "libencinowaves0")
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_SECTION "libs")
 set(CPACK_COMPONENT_RUNTIME_DESCRIPTION
     "Spectral ocean-wave synthesis library (Tessendorf-style FFT), headless\nwith no OpenGL viewer, for embedding in simulators and tools. This\npackage contains the shared runtime library.")
@@ -66,7 +69,7 @@ set(CPACK_DEBIAN_RUNTIME_PACKAGE_CONTROL_EXTRA
 # ---- dev package: headers, .so symlink, CMake config ----
 set(CPACK_DEBIAN_DEV_PACKAGE_NAME    "libencinowaves-dev")
 set(CPACK_DEBIAN_DEV_PACKAGE_SECTION "libdevel")
-set(CPACK_COMPONENT_DEV_DEPENDS runtime)          # -> libencinowaves1 (= exact version)
+set(CPACK_COMPONENT_DEV_DEPENDS runtime)          # -> libencinowaves0 (= exact version)
 # The PUBLIC link deps surface in the installed headers and in
 # EncinoWavesConfig.cmake's find_dependency() calls, so downstream builds need
 # their -dev packages. Floors reuse EW_*_MIN from the top-level CMakeLists.txt
@@ -130,14 +133,14 @@ if(NOT _changelog_gz_result EQUAL 0)
     "Failed to compress changelog.Debian (gzip exit ${_changelog_gz_result})")
 endif()
 install(FILES "${_changelog_gz}"
-  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libencinowaves1    COMPONENT runtime)
+  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libencinowaves0    COMPONENT runtime)
 install(FILES "${_changelog_gz}"
   DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libencinowaves-dev COMPONENT dev)
 
 # ---- lintian overrides for documented, internal-only acceptable tags ----
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/lintian-overrides-runtime"
   DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/lintian/overrides
-  RENAME libencinowaves1 COMPONENT runtime)
+  RENAME libencinowaves0 COMPONENT runtime)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/lintian-overrides-dev"
   DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/lintian/overrides
   RENAME libencinowaves-dev COMPONENT dev)
