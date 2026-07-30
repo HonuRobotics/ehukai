@@ -41,6 +41,16 @@ the original a desktop application:
 - **Headless smoke tests** under `test/` exercise the spectra → propagation
   pipeline without a GPU.
 
+## Package installation (Ubuntu)
+
+The `packages.honurobotics.com` repository hosts the latest version
+released of this repository. Install it using:
+
+```bash
+o sh -c "$(curl -fsSL https://packages.honurobotics.com/setup.sh)"
+sudo apt update
+sudo apt install libencinowaves-dev
+```
 
 ## Building (Ubuntu)
 
