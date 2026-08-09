@@ -43,12 +43,11 @@ the original a desktop application:
 
 ## Package installation (Ubuntu)
 
-The `packages.honurobotics.com` repository hosts the latest released
-version of this library for Ubuntu 24.04 and 26.04. Install it using:
+Prebuilt packages for Ubuntu 24.04 and 26.04 are available from the
+[Honu Robotics APT repository](https://packages.honurobotics.com/). Follow
+the setup instructions there, then:
 
 ```bash
-sudo sh -c "$(curl -fsSL https://packages.honurobotics.com/setup.sh)"
-sudo apt update
 sudo apt install libencinowaves-dev
 ```
 
