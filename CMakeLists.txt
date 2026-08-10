@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 cmake_minimum_required(VERSION 3.18)
-project(EncinoWaves VERSION 0.0.1 LANGUAGES CXX)
+project(ehukai VERSION 0.0.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -46,14 +46,14 @@ if(SANITIZE)
 endif()
 
 # Single source of truth for dependency version floors; reused on the consumer
-# side via EncinoWavesConfig.cmake.in so the two never drift.
-set(EW_EIGEN3_MIN 3.4)
-set(EW_TBB_MIN    2021)
-set(EW_IMATH_MIN  3.1)
+# side via ehukaiConfig.cmake.in so the two never drift.
+set(EHUKAI_EIGEN3_MIN 3.4)
+set(EHUKAI_TBB_MIN    2021)
+set(EHUKAI_IMATH_MIN  3.1)
 
-find_package(Eigen3 ${EW_EIGEN3_MIN} REQUIRED NO_MODULE)  # header-only; Eigen::FFT
-find_package(TBB    ${EW_TBB_MIN}    REQUIRED)            # parallel sweeps
-find_package(Imath  ${EW_IMATH_MIN}  REQUIRED)            # BSD-3 math types
+find_package(Eigen3 ${EHUKAI_EIGEN3_MIN} REQUIRED NO_MODULE)  # header-only; Eigen::FFT
+find_package(TBB    ${EHUKAI_TBB_MIN}    REQUIRED)            # parallel sweeps
+find_package(Imath  ${EHUKAI_IMATH_MIN}  REQUIRED)            # BSD-3 math types
 
 add_library(${PROJECT_NAME} SHARED
   src/Foundation.cpp
@@ -74,7 +74,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen TBB::tbb Imath::Imath
 # ---- install: headers, target, and the CMake package config ----
 # COMPONENT tags split the install into the `runtime` (shared object) and `dev`
 # (headers, .so symlink, CMake config) sets that cmake/Packaging.cmake turns into
-# the libencinowaves0 / libencinowaves-dev .deb packages. A plain `cmake --install`
+# the libehukai0 / libehukai-dev .deb packages. A plain `cmake --install`
 # is unaffected; it still installs every component.
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT dev
   DIRECTORY_PERMISSIONS
@@ -113,10 +113,10 @@ install(FILES
 
 # Each binary package needs its own machine-readable copyright (lintian).
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/copyright
-  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libencinowaves0
+  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libehukai0
   COMPONENT runtime)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/deb/copyright
-  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libencinowaves-dev
+  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/libehukai-dev
   COMPONENT dev)
 
 # ---- headless smoke tests (drivers exit non-zero on failure) ----
@@ -130,9 +130,9 @@ if(BUILD_TESTING)
 endif()
 
 # ---- optional FFT microbenchmark (off by default; needs Google Benchmark) ----
-option(ENCINOWAVES_BUILD_BENCHMARKS
+option(EHUKAI_BUILD_BENCHMARKS
        "Build the FFT microbenchmark (requires Google Benchmark)" OFF)
-if(ENCINOWAVES_BUILD_BENCHMARKS)
+if(EHUKAI_BUILD_BENCHMARKS)
   find_package(benchmark REQUIRED)
   add_executable(bench_FftwWrapper benchmark/bench_FftwWrapper.cc)
   target_link_libraries(bench_FftwWrapper
