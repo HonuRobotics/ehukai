@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>encinowaves</name>
+  <name>ehukai</name>
   <version>0.0.1</version>
   <description>
     Headless spectral ocean-wave synthesis library: TMA/JONSWAP/Pierson-Moskowitz
     spectra with directional spreading and dispersion, after Horvath (2015).
-    Exports the EncinoWaves::EncinoWaves CMake target.
+    Exports the ehukai::ehukai CMake target.
 
     This manifest exists so the library can be developed as a peer of its
     consumers in a colcon workspace. It is a plain CMake package — colcon does
@@ -16,14 +16,14 @@
   </description>
   <maintainer email="info@honurobotics.com">Honu Robotics</maintainer>
   <license>Apache-2.0</license>
-  <url type="repository">https://github.com/HonuRobotics/encinowaves</url>
+  <url type="repository">https://github.com/HonuRobotics/ehukai</url>
 
   <buildtool_depend>cmake</buildtool_depend>
 
   <!-- These are rosdep KEYS, not apt package names: `eigen` resolves to
        libeigen3-dev and `tbb` to libtbb-dev. Version floors live in
-       CMakeLists.txt (EW_EIGEN3_MIN, EW_TBB_MIN, EW_IMATH_MIN); rosdep keys
-       carry no version, so the two are matched by hand.
+       CMakeLists.txt (EHUKAI_EIGEN3_MIN, EHUKAI_TBB_MIN, EHUKAI_IMATH_MIN);
+       rosdep keys carry no version, so the two are matched by hand.
 
        Imath has NO rosdep key — there is no rule for imath, ilmbase or
        openexr in any rosdistro list — so it cannot be declared here and
