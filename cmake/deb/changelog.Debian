@@ -1,4 +1,4 @@
-encinowaves (0.0.1-1) noble; urgency=medium
+ehukai (0.0.1-1) noble; urgency=medium
 
   * Initial Debian packaging via CPack (component-based library/dev split).
 
