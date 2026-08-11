@@ -16,7 +16,7 @@ name: CI
 
 on:
   push:
-    branches: [ master, "jrivero/**" ]
+    branches: [ main, "jrivero/**" ]
   pull_request:
   workflow_dispatch:
 
