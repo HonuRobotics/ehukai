@@ -35,9 +35,16 @@ set(CPACK_COMPONENTS_ALL runtime dev)
 
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)            # libehukai0_0.0.1-1_amd64.deb
 # Base Debian revision. CI appends a per-distribution suffix (e.g. ~ubuntu24.04)
-# via -DEW_DEB_DISTRO_SUFFIX so the same upstream version coexists across Ubuntu
+# via -DEHUKAI_DEB_DISTRO_SUFFIX so the same upstream version coexists across Ubuntu
 # releases and a release upgrade pulls the newer build (dpkg orders
 # ~ubuntu24.04 < ~ubuntu26.04). Unset, packaging is byte-for-byte as before.
+# The old EW_ spellings of these variables must fail loudly: CMake only
+# warns about unused -D variables, which is how a renamed flag once shipped
+# suffixless debs from a green build.
+if(DEFINED EW_DEB_DISTRO_SUFFIX OR DEFINED EW_DEB_DISTRO_CODENAME)
+  message(FATAL_ERROR "EW_DEB_DISTRO_* was renamed to EHUKAI_DEB_DISTRO_*; "
+    "update the caller (see .github/workflows/release.yml).")
+endif()
 set(EHUKAI_DEB_DISTRO_SUFFIX "" CACHE STRING
     "Per-distribution Debian version suffix, e.g. ~ubuntu24.04")
 set(EHUKAI_DEB_DISTRO_CODENAME "" CACHE STRING
