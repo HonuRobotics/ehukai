@@ -35,7 +35,7 @@ set(CPACK_COMPONENTS_ALL runtime dev)
 
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)            # libehukai0_0.0.1-1_amd64.deb
 # Base Debian revision. CI appends a per-distribution suffix (e.g. ~ubuntu24.04)
-# via -DEW_DEB_DISTRO_SUFFIX so the same upstream version coexists across Ubuntu
+# via -DEHUKAI_DEB_DISTRO_SUFFIX so the same upstream version coexists across Ubuntu
 # releases and a release upgrade pulls the newer build (dpkg orders
 # ~ubuntu24.04 < ~ubuntu26.04). Unset, packaging is byte-for-byte as before.
 set(EHUKAI_DEB_DISTRO_SUFFIX "" CACHE STRING
