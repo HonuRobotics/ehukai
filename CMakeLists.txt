@@ -4,6 +4,16 @@
 cmake_minimum_required(VERSION 3.18)
 project(ehukai VERSION 0.0.1 LANGUAGES CXX)
 
+# A plain colcon build sets no build type, which compiles the hot paths
+# without optimization. Default to an optimized build with debug info;
+# an explicit -DCMAKE_BUILD_TYPE always wins.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  message(STATUS "No CMAKE_BUILD_TYPE given; defaulting to RelWithDebInfo")
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY
+    STRINGS Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CTest)
