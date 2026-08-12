@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 cmake_minimum_required(VERSION 3.18)
-project(ehukai VERSION 0.0.1 LANGUAGES CXX)
+project(ehukai VERSION 0.0.2 LANGUAGES CXX)
 
 # A plain colcon build sets no build type, which compiles the hot paths
 # without optimization. Default to an optimized build with debug info;
