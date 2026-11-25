@@ -129,7 +129,7 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/package.xml
 # ---- headless smoke tests (drivers exit non-zero on failure) ----
 if(BUILD_TESTING)
   foreach(t test_DirectionalSpreading test_FftwWrapper test_headers
-            test_Propagation test_Random)
+            test_Propagation test_Random test_WrappedBorder)
     add_executable(${t} test/${t}.cc)
     target_link_libraries(${t} PRIVATE ${PROJECT_NAME})
     add_test(NAME ${t} COMMAND ${t})
