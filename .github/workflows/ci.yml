@@ -73,7 +73,8 @@ jobs:
           export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1"
           if [ "${{ matrix.sanitizer }}" = "thread" ]; then
             # The system libtbb is not TSan-instrumented, so its work-stealing
-            # scheduler trips benign races; test/tsan.supp silences only those.
+            # scheduler trips benign races; test/tsan.supp silences those (and,
+            # as its header says, a real race in a parallel_for body).
             # halt_on_error=1 aborts on the first *unsuppressed* (real) race so
             # the known shared-plan race fails fast instead of grinding through
             # its 100-round loop under TSan's heavy instrumentation.
