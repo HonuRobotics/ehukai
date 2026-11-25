@@ -122,7 +122,8 @@ Two environment notes the CI bakes in, needed for the **thread** job:
 
 - The system `libtbb` is not TSan-instrumented, so TBB's work-stealing scheduler
   trips benign races. `test/tsan.supp` (`TSAN_OPTIONS=suppressions=...`) silences
-  only those; real findings are untouched.
+  those. It also hides a real race in code that runs as a `parallel_for` body,
+  so such code needs a functional test of its own (see the file's header).
 - GCC's libtsan shadow layout collides with high-entropy ASLR
   (`FATAL: unexpected memory mapping`). Run the tests under `setarch -R` (no root)
   to disable per-process randomization.

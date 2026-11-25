@@ -2,6 +2,11 @@
 Changelog for package ehukai
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Fix a data race in ``CopyWrappedBorder``: the corner cell of a padded
+  spatial grid could keep a stale value.
+
 0.0.3 (2026-08-31)
 ------------------
 * Declare the Imath dependency as the ``libimath-dev`` rosdep key.

@@ -286,6 +286,10 @@ protected:
 };
 
 //-*****************************************************************************
+//! Fills the wrapped border of an (N+1) x (N+1) padded grid: the last cell
+//! of each row repeats its first, and the last row repeats row 0. Rows may
+//! run in any order and in parallel: each task writes only border cells and
+//! reads only cells of the N x N interior, which no task writes.
 template <typename T>
 struct CopyWrappedBorder {
   T* Data = nullptr;
@@ -295,10 +299,13 @@ struct CopyWrappedBorder {
     std::size_t stride = N + 1;
     for (int y = i_rows.begin(); y != i_rows.end(); ++y) {
       if (y == N) {
+        // Row 0 without its border cell, which the y == 0 task writes. The
+        // corner wraps to the first cell on both axes.
         std::copy(Data,                             // input begin
-                  Data + stride,                    // input end
+                  Data + N,                         // input end
                   Data + (stride * std::size_t(N))  // output begin
                   );
+        Data[(stride * std::size_t(N)) + N] = Data[0];
       } else {
         std::size_t rowBeginIndex = y * stride;
         Data[rowBeginIndex + N]   = Data[rowBeginIndex];

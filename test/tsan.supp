@@ -8,9 +8,13 @@
 # parallel_for splits work across threads (e.g. test_Propagation's spectral
 # sweeps). These are false positives, not bugs in ehukai.
 #
-# Real ehukai concurrency findings are NOT silenced by this file: they
-# fail their own functional assertions in test_FftwWrapper (the concurrent
-# shared-plan execute test) independently of TSan's race reports.
+# The cost: the race: pattern below matches any report with a TBB name in
+# its stack, and that includes a real race in ehukai code that runs as a
+# parallel_for body, whose own signature names tbb::detail::d1::blocked_range.
+# Such a race is silenced here (the wrapped border race in CopyWrappedBorder
+# was), so it must fail a functional assertion instead: test_FftwWrapper's
+# concurrent shared-plan execute test and test_WrappedBorder do that for the
+# races known so far.
 #
 # To see the raw TBB reports, run with TSAN_OPTIONS unset (no suppressions).
 
@@ -21,6 +25,5 @@ race:tbb::detail::
 
 # When the system libtbb ships without symbols, those same runtime frames
 # resolve to <null> instead of tbb::detail::, so the pattern above misses them.
-# Match the uninstrumented shared library directly. Real ehukai races still
-# fail their own functional assertions in test_FftwWrapper, independent of TSan.
+# Match the uninstrumented shared library directly.
 called_from_lib:libtbb.so.12
