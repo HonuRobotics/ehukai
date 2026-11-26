@@ -227,11 +227,29 @@ int main()  // NOLINT(bugprone-exception-escape): a throwing ctor is a test fail
          "propagate without MinE: Dx as the full propagate");
   demand(sameGrid(pstate.Dy, lazyState.Dy),
          "propagate without MinE: Dy as the full propagate");
-  propagation.propagateMinE(params, istate, lazyState, 0.0f);
+  propagation.propagateMinE(istate, lazyState, 0.0f);
   demand(sameGrid(pstate.MinE, lazyState.MinE),
          "propagateMinE: MinE bit for bit the full propagate's");
   demand(sameGrid(pstate.Dx, lazyState.Dx) && sameGrid(pstate.Dy, lazyState.Dy),
          "propagateMinE leaves Dx and Dy as they were");
+
+  // MinE for an earlier time, after a propagate for a later one: the
+  // spectrum must be evolved again for the time asked for.
+  std::cout << "running propagate(t=1.5) without MinE, propagate(t=3.0), "
+               "then propagateMinE(t=1.5) ...\n";
+  PropagatedStatef fullEarly(params);
+  propagation.propagate(params, istate, fullEarly, 1.5f);
+  PropagatedStatef lazyEarly(params);
+  propagation.propagate(params, istate, lazyEarly, 1.5f,
+                        /*i_computeMinE=*/false);
+  PropagatedStatef later(params);
+  propagation.propagate(params, istate, later, 3.0f);
+  propagation.propagateMinE(istate, lazyEarly, 1.5f);
+  demand(!sameGrid(fullEarly.MinE, later.MinE),
+         "MinE differs between t=1.5 and t=3.0");
+  demand(sameGrid(fullEarly.MinE, lazyEarly.MinE),
+         "propagateMinE at an earlier time: MinE bit for bit the full "
+         "propagate's");
 
   // The damped height is mixed by statistics of the filtered field that
   // TBB reduces in whatever order it splits the range, so it is the same
@@ -247,7 +265,7 @@ int main()  // NOLINT(bugprone-exception-escape): a throwing ctor is a test fail
   PropagatedStatef lazyDamped(dampedParams);
   propagation.propagate(dampedParams, istate, lazyDamped, 0.0f,
                         /*i_computeMinE=*/false);
-  propagation.propagateMinE(dampedParams, istate, lazyDamped, 0.0f);
+  propagation.propagateMinE(istate, lazyDamped, 0.0f);
   PropagatedStatef dampedAgain(dampedParams);
   propagation.propagate(dampedParams, istate, dampedAgain, 0.0f);
   const float heightScale = std::max(std::abs(hdStats.min),

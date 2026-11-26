@@ -114,10 +114,10 @@ template <typename T> struct Propagation {
   //! transforms and the eigenvalue, exactly as propagate() computes them,
   //! with FiltDx and FiltDy as scratch. Height, Dx and Dy are left as they
   //! are, so it follows a propagate(..., false) for the same time.
-  void propagateMinE(const Parameters<T> &i_params,
-                     const InitialState<T> &i_istate,
+  void propagateMinE(const InitialState<T> &i_istate,
                      PropagatedState<T> &o_pstate, T i_time);
 
+protected:
   //! Time-evolve the spectrum into HSpec for i_time.
   void makeHSpec(const InitialState<T> &i_istate, T i_time, int i_N);
 
@@ -424,8 +424,7 @@ void Propagation<T>::computeMinE(RealSpatialField2D<T> &o_dxx,
 
 //-*****************************************************************************
 template <typename T>
-void Propagation<T>::propagateMinE(const Parameters<T> & /*i_params*/,
-                                   const InitialState<T> &i_istate,
+void Propagation<T>::propagateMinE(const InitialState<T> &i_istate,
                                    PropagatedState<T> &o_pstate, T i_time) {
   int N = o_pstate.Height.unpaddedWidth();
   std::size_t dataSize = o_pstate.Height.size();
