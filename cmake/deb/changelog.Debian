@@ -1,3 +1,13 @@
+ehukai (0.0.4-1) noble; urgency=medium
+
+  * Propagation::propagate can skip the folding metric (i_computeMinE), and
+    propagateMinE fills it alone.
+  * Fix a data race in CopyWrappedBorder that left a stale corner cell.
+  * From 0.0.3: declare the Imath dependency as libimath-dev, make the
+    Debian packaging opt-in and install package.xml.
+
+ -- Carlos Aguero <caguero@honurobotics.com>  Thu, 26 Nov 2026 21:44:16 +0000
+
 ehukai (0.0.2-1) noble; urgency=medium
 
   * First release under the ehukai name: renamed repository, Debian
