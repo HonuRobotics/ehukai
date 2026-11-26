@@ -100,11 +100,32 @@ template <typename T> struct Propagation {
         Converter(HSpec, TempSpat, i_nthreads), Domain(i_params.domain) {}
 
   //! Evolves i_istate to time i_time (seconds) and fills o_pstate's
-  //! Height / Dx / Dy / MinE grids. When i_params.troughDamping > 0 an
-  //! additional band-filtered pass attenuates wave troughs (at the cost of
-  //! roughly twice the FFT work).
+  //! Height / Dx / Dy grids, and its MinE grid when i_computeMinE is true.
+  //! MinE takes three of the six inverse transforms; a caller that needs it
+  //! only sometimes, or never, passes false, which leaves o_pstate.MinE as
+  //! it was, and fills it later with propagateMinE(). When
+  //! i_params.troughDamping > 0 an additional band-filtered pass attenuates
+  //! wave troughs (at the cost of roughly twice the FFT work).
   void propagate(const Parameters<T> &i_params, const InitialState<T> &i_istate,
-                 PropagatedState<T> &o_pstate, T i_time);
+                 PropagatedState<T> &o_pstate, T i_time,
+                 bool i_computeMinE = true);
+
+  //! Fills o_pstate.MinE alone for time i_time: the three derivative
+  //! transforms and the eigenvalue, exactly as propagate() computes them,
+  //! with FiltDx and FiltDy as scratch. Height, Dx and Dy are left as they
+  //! are, so it follows a propagate(..., false) for the same time.
+  void propagateMinE(const InitialState<T> &i_istate,
+                     PropagatedState<T> &o_pstate, T i_time);
+
+protected:
+  //! Time-evolve the spectrum into HSpec for i_time.
+  void makeHSpec(const InitialState<T> &i_istate, T i_time, int i_N);
+
+  //! From HSpec: Dxx into o_dxx, Dyy into o_dyy, Dxy into o_minE, then the
+  //! smaller eigenvalue of the pinch Jacobian into o_minE.
+  void computeMinE(RealSpatialField2D<T> &o_dxx, RealSpatialField2D<T> &o_dyy,
+                   RealSpatialField2D<T> &o_minE, int i_N,
+                   std::size_t i_dataSize);
 };
 
 //-*****************************************************************************
@@ -340,9 +361,92 @@ template <typename T> struct InterpolateIntoB {
 
 //-*****************************************************************************
 template <typename T>
+void Propagation<T>::makeHSpec(const InitialState<T> &i_istate, T i_time,
+                               int i_N) {
+  HSPEC<T> F;
+  F.HSpecPos = i_istate.HSpectralPos.cdata();
+  F.HSpecNeg = i_istate.HSpectralNeg.cdata();
+  F.Omega = i_istate.Omega.cdata();
+  F.HSpecProp = HSpec.data();
+  F.Time = i_time;
+  SpectralIterate(F, Domain, i_N);
+}
+
+//-*****************************************************************************
+template <typename T>
+void Propagation<T>::computeMinE(RealSpatialField2D<T> &o_dxx,
+                                 RealSpatialField2D<T> &o_dyy,
+                                 RealSpatialField2D<T> &o_minE, int i_N,
+                                 std::size_t i_dataSize) {
+  // Make DxxSpec from Hspec
+  {
+    DXXSPEC<T> F;
+    F.HSpecProp = HSpec.cdata();
+    F.DxxSpecProp = TempSpec.data();
+    SpectralIterate(F, Domain, i_N);
+  }
+
+  // Compute Dxx into o_dxx.
+  { Converter.execute(TempSpec, o_dxx); }
+
+  // Make DyySpec from Hspec
+  {
+    DYYSPEC<T> F;
+    F.HSpecProp = HSpec.cdata();
+    F.DyySpecProp = TempSpec.data();
+    SpectralIterate(F, Domain, i_N);
+  }
+
+  // Compute Dyy into o_dyy.
+  { Converter.execute(TempSpec, o_dyy); }
+
+  // Make DxySpec from Hspec
+  {
+    DXYSPEC<T> F;
+    F.HSpecProp = HSpec.cdata();
+    F.DxySpecProp = TempSpec.data();
+    SpectralIterate(F, Domain, i_N);
+  }
+
+  // Compute Dxy, temporarily put into o_minE.
+  { Converter.execute(TempSpec, o_minE); }
+
+  // Compute MinE from Dxx, Dyy, Dxy.
+  {
+    ComputeMinE<T> F;
+    F.Dxx = o_dxx.cdata();
+    F.Dyy = o_dyy.cdata();
+    F.Dxy_and_MinE = o_minE.data();
+    F.Pinch = T(1.25);
+    tbb::parallel_for(tbb::blocked_range<std::size_t>(0, i_dataSize), F);
+  }
+}
+
+//-*****************************************************************************
+template <typename T>
+void Propagation<T>::propagateMinE(const InitialState<T> &i_istate,
+                                   PropagatedState<T> &o_pstate, T i_time) {
+  int N = o_pstate.Height.unpaddedWidth();
+  std::size_t dataSize = o_pstate.Height.size();
+  EWAV_ASSERT(
+      i_istate.HSpectralPos.height() == N &&
+          i_istate.HSpectralNeg.height() == N && i_istate.Omega.height() == N &&
+          o_pstate.MinE.width() == (N + 1) && FiltDx.width() == (N + 1) &&
+          FiltDy.width() == (N + 1),
+      "Mismatched sizes in wave propagation.");
+
+  makeHSpec(i_istate, i_time, N);
+  // The final Dx and Dy stay: the derivatives go through the filtered-pass
+  // buffers, idle between calls.
+  computeMinE(FiltDx, FiltDy, o_pstate.MinE, N, dataSize);
+}
+
+//-*****************************************************************************
+template <typename T>
 void Propagation<T>::propagate(const Parameters<T> &i_params,
                                const InitialState<T> &i_istate,
-                               PropagatedState<T> &o_pstate, T i_time) {
+                               PropagatedState<T> &o_pstate, T i_time,
+                               bool i_computeMinE) {
   // Check sizes.
   int N = o_pstate.Height.unpaddedWidth();
   std::size_t dataSize = o_pstate.Height.size();
@@ -354,57 +458,13 @@ void Propagation<T>::propagate(const Parameters<T> &i_params,
       "Mismatched sizes in wave propagation.");
 
   // Make Hspec.
-  {
-    HSPEC<T> F;
-    F.HSpecPos = i_istate.HSpectralPos.cdata();
-    F.HSpecNeg = i_istate.HSpectralNeg.cdata();
-    F.Omega = i_istate.Omega.cdata();
-    F.HSpecProp = HSpec.data();
-    F.Time = i_time;
-    SpectralIterate(F, Domain, N);
-  }
+  makeHSpec(i_istate, i_time, N);
 
-  // Make DxxSpec from Hspec
-  {
-    DXXSPEC<T> F;
-    F.HSpecProp = HSpec.cdata();
-    F.DxxSpecProp = TempSpec.data();
-    SpectralIterate(F, Domain, N);
-  }
-
-  // Compute Dxx, temporarily put into Dx.
-  { Converter.execute(TempSpec, o_pstate.Dx); }
-
-  // Make DyySpec from Hspec
-  {
-    DYYSPEC<T> F;
-    F.HSpecProp = HSpec.cdata();
-    F.DyySpecProp = TempSpec.data();
-    SpectralIterate(F, Domain, N);
-  }
-
-  // Compute Dyy, temporarily put into Dy.
-  { Converter.execute(TempSpec, o_pstate.Dy); }
-
-  // Make DxySpec from Hspec
-  {
-    DXYSPEC<T> F;
-    F.HSpecProp = HSpec.cdata();
-    F.DxySpecProp = TempSpec.data();
-    SpectralIterate(F, Domain, N);
-  }
-
-  // Compute Dxy, temporarily put into MinE.
-  { Converter.execute(TempSpec, o_pstate.MinE); }
-
-  // Compute MinE from Dxx, Dyy, Dxy.
-  {
-    ComputeMinE<T> F;
-    F.Dxx = o_pstate.Dx.cdata();
-    F.Dyy = o_pstate.Dy.cdata();
-    F.Dxy_and_MinE = o_pstate.MinE.data();
-    F.Pinch = T(1.25);
-    tbb::parallel_for(tbb::blocked_range<std::size_t>(0, dataSize), F);
+  // MinE from the derivatives, through Dx and Dy as scratch before they
+  // take the displacements below; three of the six transforms, skipped for
+  // a caller that fills MinE later, or never.
+  if (i_computeMinE) {
+    computeMinE(o_pstate.Dx, o_pstate.Dy, o_pstate.MinE, N, dataSize);
   }
 
   // Make DxSpec from Hspec

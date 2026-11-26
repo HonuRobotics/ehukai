@@ -6,6 +6,10 @@ Forthcoming
 -----------
 * Fix a data race in ``CopyWrappedBorder``: the corner cell of a padded
   spatial grid could keep a stale value.
+* ``Propagation::propagate`` takes ``i_computeMinE`` (default true): false
+  skips the three transforms behind the folding metric and leaves ``MinE``
+  untouched; ``propagateMinE`` fills it alone, bit for bit the full result,
+  for a caller that needs foam only sometimes.
 
 0.0.3 (2026-08-31)
 ------------------

@@ -195,6 +195,92 @@ int main()  // NOLINT(bugprone-exception-escape): a throwing ctor is a test fail
   demand(dydStats.allFinite, "damped Dy: all values finite");
   demand(edStats.allFinite,  "damped MinE: all values finite");
 
+  // ---- Scenario 3: MinE computed apart -----------------------------------
+  // propagate() without MinE leaves that grid untouched and skips three of
+  // the six transforms; propagateMinE() then fills it, bit for bit what the
+  // full propagate() computed, for a caller that needs it only sometimes.
+  // With trough damping on, the same: the damping pass has its own filtered
+  // MinE, and the output grid is the unfiltered one either way.
+  auto sameGrid = [](const ehukai::RealSpatialField2D<float> &a,
+                     const ehukai::RealSpatialField2D<float> &b) {
+    if (a.size() != b.size())
+      return false;
+    for (std::size_t i = 0; i < a.size(); ++i)
+      if (a.cdata()[i] != b.cdata()[i])
+        return false;
+    return true;
+  };
+  std::cout << "\nrunning propagate(t=0.0) without MinE, then propagateMinE"
+               " ...\n";
+  PropagatedStatef lazyState(params);
+  std::fill(lazyState.MinE.data(),
+            lazyState.MinE.data() + lazyState.MinE.size(), 42.0f);
+  propagation.propagate(params, istate, lazyState, 0.0f,
+                        /*i_computeMinE=*/false);
+  bool untouched = true;
+  for (std::size_t i = 0; i < lazyState.MinE.size(); ++i)
+    untouched = untouched && lazyState.MinE.cdata()[i] == 42.0f;
+  demand(untouched, "propagate without MinE leaves MinE untouched");
+  demand(sameGrid(pstate.Height, lazyState.Height),
+         "propagate without MinE: Height as the full propagate");
+  demand(sameGrid(pstate.Dx, lazyState.Dx),
+         "propagate without MinE: Dx as the full propagate");
+  demand(sameGrid(pstate.Dy, lazyState.Dy),
+         "propagate without MinE: Dy as the full propagate");
+  propagation.propagateMinE(istate, lazyState, 0.0f);
+  demand(sameGrid(pstate.MinE, lazyState.MinE),
+         "propagateMinE: MinE bit for bit the full propagate's");
+  demand(sameGrid(pstate.Dx, lazyState.Dx) && sameGrid(pstate.Dy, lazyState.Dy),
+         "propagateMinE leaves Dx and Dy as they were");
+
+  // MinE for an earlier time, after a propagate for a later one: the
+  // spectrum must be evolved again for the time asked for.
+  std::cout << "running propagate(t=1.5) without MinE, propagate(t=3.0), "
+               "then propagateMinE(t=1.5) ...\n";
+  PropagatedStatef fullEarly(params);
+  propagation.propagate(params, istate, fullEarly, 1.5f);
+  PropagatedStatef lazyEarly(params);
+  propagation.propagate(params, istate, lazyEarly, 1.5f,
+                        /*i_computeMinE=*/false);
+  PropagatedStatef later(params);
+  propagation.propagate(params, istate, later, 3.0f);
+  propagation.propagateMinE(istate, lazyEarly, 1.5f);
+  demand(!sameGrid(fullEarly.MinE, later.MinE),
+         "MinE differs between t=1.5 and t=3.0");
+  demand(sameGrid(fullEarly.MinE, lazyEarly.MinE),
+         "propagateMinE at an earlier time: MinE bit for bit the full "
+         "propagate's");
+
+  // The damped height is mixed by statistics of the filtered field that
+  // TBB reduces in whatever order it splits the range, so it is the same
+  // to rounding, not to the bit, between any two propagates; the output
+  // MinE is elementwise and stays exact.
+  auto maxAbsDiff = [](const ehukai::RealSpatialField2D<float> &a,
+                       const ehukai::RealSpatialField2D<float> &b) {
+    float d = 0.0f;
+    for (std::size_t i = 0; i < a.size(); ++i)
+      d = std::max(d, std::abs(a.cdata()[i] - b.cdata()[i]));
+    return d;
+  };
+  PropagatedStatef lazyDamped(dampedParams);
+  propagation.propagate(dampedParams, istate, lazyDamped, 0.0f,
+                        /*i_computeMinE=*/false);
+  propagation.propagateMinE(istate, lazyDamped, 0.0f);
+  PropagatedStatef dampedAgain(dampedParams);
+  propagation.propagate(dampedParams, istate, dampedAgain, 0.0f);
+  const float heightScale = std::max(std::abs(hdStats.min),
+                                     std::abs(hdStats.max));
+  const float lazyDiff = maxAbsDiff(dampedState.Height, lazyDamped.Height);
+  const float againDiff = maxAbsDiff(dampedState.Height, dampedAgain.Height);
+  std::printf("  damped Height: MinE apart differs by %.3g, a second full "
+              "propagate by %.3g (max |Height| %.3g)\n",
+              lazyDiff, againDiff, heightScale);
+  demand(lazyDiff <= 1e-5f * heightScale,
+         "damped, MinE apart: Height as the full propagate, to rounding");
+  demand(sameGrid(dampedState.MinE, lazyDamped.MinE),
+         "damped, MinE apart: MinE bit for bit the full propagate's");
+  std::cout << "  done\n";
+
   float maxHeightDiff = 0.0f;
   for (std::size_t i = 0; i < cellCount; ++i)
   {
