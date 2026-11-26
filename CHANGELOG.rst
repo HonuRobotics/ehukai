@@ -2,8 +2,8 @@
 Changelog for package ehukai
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.4 (2026-11-26)
+------------------
 * Fix a data race in ``CopyWrappedBorder``: the corner cell of a padded
   spatial grid could keep a stale value.
 * ``Propagation::propagate`` takes ``i_computeMinE`` (default true): false
